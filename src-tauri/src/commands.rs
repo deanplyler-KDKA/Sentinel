@@ -1,5 +1,6 @@
 use crate::models::{CollectorError, SecuritySnapshot};
-use crate::{defender, firewall, network, nord, windows};
+use crate::{appdata, defender, firewall, network, nord, windows};
+use serde::Serialize;
 
 /// The only IPC command in Phase 1. Zero arguments by design — the frontend
 /// cannot influence what runs (see docs/SECURITY.md).
@@ -60,6 +61,10 @@ fn collect_snapshot() -> SecuritySnapshot {
     let network = take(&mut errors, "network", network);
     let vpn = take(&mut errors, "vpn", vpn);
 
+    for e in &errors {
+        appdata::log(&format!("collector error [{}]: {}", e.source, e.message));
+    }
+
     SecuritySnapshot {
         collected_at: chrono::Utc::now().to_rfc3339(),
         defender,
@@ -69,6 +74,39 @@ fn collect_snapshot() -> SecuritySnapshot {
         vpn,
         errors,
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppInfo {
+    pub version: String,
+    pub data_dir: String,
+    pub log_path: String,
+}
+
+/// Version and data-location info for the About page. Zero arguments.
+#[tauri::command]
+pub fn get_app_info() -> AppInfo {
+    let dir = appdata::data_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "(not initialized)".into());
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION").into(),
+        log_path: format!("{dir}\\logs\\sentinel.log"),
+        data_dir: dir,
+    }
+}
+
+/// Writes a diagnostics bundle to Downloads; returns its path. Zero arguments.
+#[tauri::command]
+pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+    appdata::export_diagnostics(&app)
+}
+
+/// Resets Sentinel's own stored data (never Windows state). Zero arguments.
+#[tauri::command]
+pub fn reset_app_data(app: tauri::AppHandle) -> Result<String, String> {
+    appdata::reset(&app)
 }
 
 #[cfg(test)]

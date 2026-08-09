@@ -27,13 +27,24 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
+    "publisher": "Dean Plyler",
+    "shortDescription": "Personal Security Center",
+    "longDescription": "Sentinel is a read-only dashboard for the protections Windows already provides. It watches Microsoft Defender, Windows Firewall, BitLocker, Windows Update, your network and NordVPN — and never changes a setting.",
+    "copyright": "© 2026 Dean Plyler",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "startMenuFolder": "Sentinel",
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

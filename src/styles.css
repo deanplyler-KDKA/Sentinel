@@ -434,4 +434,113 @@ body {
 .boot-screen p {
   color: var(--text-dim);
   font-size: 14px;
+  max-width: 520px;
+  text-align: center;
+}
+
+.crash-details {
+  font-size: 12px;
+  color: var(--bad);
+  background: rgba(248, 113, 113, 0.08);
+  border: 1px solid rgba(248, 113, 113, 0.25);
+  border-radius: 10px;
+  padding: 10px 14px;
+  max-width: 640px;
+  overflow-x: auto;
+  user-select: text;
+}
+
+/* ── About panel ─────────────────────────────────────── */
+
+.about-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 8, 15, 0.72);
+  display: grid;
+  place-items: center;
+  z-index: 50;
+}
+
+.about-panel {
+  width: min(560px, calc(100vw - 48px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  background: linear-gradient(180deg, #101a2f, #0b1322);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 22px 26px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.about-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.about-header h2 {
+  font-size: 18px;
+  letter-spacing: 0.14em;
+}
+
+.about-version {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.about-close {
+  margin-left: auto;
+  font: inherit;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 6px;
+}
+
+.about-close:hover {
+  color: var(--text);
+}
+
+.about-panel h3 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+
+.about-panel section p {
+  font-size: 13.5px;
+  color: var(--text-dim);
+  line-height: 1.55;
+}
+
+.about-path {
+  font-family: Consolas, monospace;
+  font-size: 12px !important;
+  color: var(--text) !important;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.about-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.about-danger {
+  border-color: rgba(248, 113, 113, 0.4);
+  color: var(--bad);
+}
+
+.about-status {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  user-select: text;
+  overflow-wrap: anywhere;
 }

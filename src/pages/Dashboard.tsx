@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AboutPanel } from '../components/AboutPanel';
 import { getSecuritySnapshot, isTauri } from '../lib/api';
 import { activeThirdPartyAv, assessDns, computeScore } from '../lib/score';
 import { relativeTime, timeOfDay, uptimeSince } from '../lib/format';
@@ -29,6 +30,7 @@ export function Dashboard() {
   const [snapshot, setSnapshot] = useState<SecuritySnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showAbout, setShowAbout] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -98,8 +100,12 @@ export function Dashboard() {
             <RefreshIcon />
             {loading ? 'Checking…' : 'Refresh'}
           </button>
+          <button className="refresh-btn" onClick={() => setShowAbout(true)} title="About Sentinel">
+            About
+          </button>
         </div>
       </header>
+      {showAbout && <AboutPanel onClose={() => setShowAbout(false)} />}
 
       {snapshot.errors.length > 0 && (
         <div className="error-banner">
