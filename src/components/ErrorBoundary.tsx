@@ -28,8 +28,8 @@ export class ErrorBoundary extends Component<Props, State> {
         <p>Sentinel hit an unexpected error while drawing this screen.</p>
         <pre className="crash-details">{String(this.state.error)}</pre>
         <p>
-          Restarting usually fixes it. If it keeps happening, use About → Export diagnostics
-          and check the log.
+          Restarting usually fixes it. If it keeps happening, check the log at
+          %LOCALAPPDATA%\com.deanplyler.sentinel\logs\sentinel.log
         </p>
         <button className="refresh-btn" onClick={() => window.location.reload()}>
           Restart Sentinel

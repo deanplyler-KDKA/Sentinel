@@ -24,7 +24,7 @@ export function ScoreRing({ score, band, incomplete = false }: Props) {
   const labelColor = incomplete ? 'var(--warn)' : color;
   return (
     <div className="score-ring" role="img" aria-label={`Security score ${score} out of 100 — ${label}`}>
-      <svg width="220" height="220" viewBox="0 0 220 220">
+      <svg viewBox="0 0 220 220">
         <circle cx="110" cy="110" r={r} className="ring-track" />
         <circle
           cx="110"
