@@ -32,13 +32,16 @@ pub struct DefenderStatus {
     pub pua_protection: bool,
     pub controlled_folder_access: bool,
     pub signature_version: String,
-    pub signature_age_days: u32,
+    pub signature_age_days: Option<u32>,
     pub signature_last_updated: Option<String>,
     pub quick_scan_end: Option<String>,
     pub quick_scan_age_days: Option<u32>,
     pub full_scan_end: Option<String>,
     pub full_scan_age_days: Option<u32>,
     pub running_mode: String,
+    /// Non-Defender antivirus products registered in SecurityCenter2.
+    #[serde(default)]
+    pub third_party_av: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +132,10 @@ pub struct DnsEntry {
 pub struct NetworkStatus {
     pub profiles: Vec<NetworkProfile>,
     pub dns: Vec<DnsEntry>,
+    /// Server addresses with DoH actually enabled on some interface
+    /// (Dnscache registry), not merely DoH-capable.
+    #[serde(default)]
+    pub doh_servers: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

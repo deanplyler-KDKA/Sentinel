@@ -184,6 +184,12 @@ body {
   color: var(--text-faint);
 }
 
+.hero-unmeasured {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
 .score-ring {
   position: relative;
   width: 220px;

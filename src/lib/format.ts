@@ -1,7 +1,8 @@
 export function relativeTime(iso: string | null): string {
   if (!iso) return 'Never';
   const ms = Date.now() - Date.parse(iso);
-  if (Number.isNaN(ms)) return 'Unknown';
+  // A future timestamp means clock skew or a bad source — say so, don't say "Just now".
+  if (Number.isNaN(ms) || ms < 0) return 'Unknown';
   const mins = Math.floor(ms / 60_000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins} min ago`;

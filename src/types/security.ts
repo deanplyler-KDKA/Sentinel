@@ -9,13 +9,14 @@ export interface DefenderStatus {
   puaProtection: boolean;
   controlledFolderAccess: boolean;
   signatureVersion: string;
-  signatureAgeDays: number;
+  signatureAgeDays: number | null;
   signatureLastUpdated: string | null;
   quickScanEnd: string | null;
   quickScanAgeDays: number | null;
   fullScanEnd: string | null;
   fullScanAgeDays: number | null;
   runningMode: string;
+  thirdPartyAv: string[];
 }
 
 export interface FirewallStatus {
@@ -61,6 +62,8 @@ export interface DnsEntry {
 export interface NetworkStatus {
   profiles: NetworkProfile[];
   dns: DnsEntry[];
+  /** Servers with DoH actually enabled in Windows (not merely DoH-capable). */
+  dohServers: string[];
 }
 
 export interface VpnStatus {

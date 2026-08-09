@@ -3,7 +3,11 @@ use crate::powershell::run_json;
 
 // Read-only: detects the NordVPN install, service, app process, and whether a
 // tunnel adapter (NordLynx, or TAP for OpenVPN) is up. Never touches Nord config.
+// Deliberately no $ErrorActionPreference='Stop': every query here is expected
+// to miss on machines without Nord, so absence is data, not an error.
+// The PSModulePath pin must stay the first statement — see powershell.rs.
 const SCRIPT: &str = r#"
+$env:PSModulePath = [Environment]::GetFolderPath('System') + '\WindowsPowerShell\v1.0\Modules;' + [Environment]::GetFolderPath('ProgramFiles') + '\WindowsPowerShell\Modules';
 [Console]::OutputEncoding=[Text.Encoding]::UTF8;
 $svc = Get-Service -Name 'nordvpn-service' -ErrorAction SilentlyContinue;
 $installed = (Test-Path 'C:\Program Files\NordVPN') -or ($null -ne $svc);

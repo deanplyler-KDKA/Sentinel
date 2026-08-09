@@ -2,7 +2,9 @@ use crate::models::FirewallStatus;
 use crate::powershell::run_json;
 
 // Read-only: Get-NetFirewallProfile reports per-profile enablement.
+// The PSModulePath pin must stay the first statement — see powershell.rs.
 const SCRIPT: &str = r#"
+$env:PSModulePath = [Environment]::GetFolderPath('System') + '\WindowsPowerShell\v1.0\Modules;' + [Environment]::GetFolderPath('ProgramFiles') + '\WindowsPowerShell\Modules';
 [Console]::OutputEncoding=[Text.Encoding]::UTF8;
 $ErrorActionPreference='Stop';
 $p = Get-NetFirewallProfile;

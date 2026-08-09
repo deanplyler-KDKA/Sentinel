@@ -18,10 +18,14 @@ Read `docs/ARCHITECTURE.md` and `docs/SECURITY.md` before changing backend code.
 - Rust models in `models.rs` serialize camelCase; mirror every change in
   `src/types/security.ts`.
 - Timestamps become ISO-8601 strings inside PowerShell (`.ToString('o')`).
-- Force JSON arrays with `ConvertTo-Json -InputObject @(...)` (PS 5.1 unwraps
-  single-element arrays otherwise) and set `[Console]::OutputEncoding` to UTF-8
-  at the top of every script.
-- Score weights live only in `src/lib/score.ts` (`WEIGHTS` table) and must sum to 100.
+- Every collector script starts with the `$env:PSModulePath` pin (see
+  `powershell.rs` invariants), uses single quotes only (never `"`), then sets
+  `[Console]::OutputEncoding` to UTF-8. Force JSON arrays with
+  `ConvertTo-Json -InputObject @(...)` (PS 5.1 unwraps single-element arrays).
+- Score weights live only in `src/lib/score.ts` (the `CHECKS` table, inline
+  `points`) and must sum to 100.
+- Unknown must stay visible: any `unknown` check caps the topbar pill at
+  "Incomplete" — never let a partial snapshot render a green headline.
 - UI copy is plain language ("Ransomware protection is off"), not jargon
   ("EnableControlledFolderAccess=0").
 

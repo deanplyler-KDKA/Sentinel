@@ -23,6 +23,7 @@ export function mockSnapshot(): SecuritySnapshot {
       fullScanEnd: null,
       fullScanAgeDays: null,
       runningMode: 'Normal',
+      thirdPartyAv: [],
     },
     firewall: { domain: true, private: true, public: true },
     system: {
@@ -46,6 +47,7 @@ export function mockSnapshot(): SecuritySnapshot {
         { interface: 'NordLynx', servers: ['103.86.96.100', '103.86.99.100'] },
         { interface: 'Wi-Fi', servers: ['192.168.0.1'] },
       ],
+      dohServers: [],
     },
     vpn: {
       installed: true,

@@ -29,50 +29,94 @@ export interface ScoreReport {
   score: number;
   band: Band;
   results: CheckResult[];
+  /** Points that couldn't be measured — the headline must not read green-and-certain while these exist. */
+  unknownPoints: number;
 }
 
-/** Public resolvers considered "secure DNS" (filtering / privacy resolvers). */
-const SECURE_DNS: Record<string, string> = {
-  '103.86.96.100': 'NordVPN',
-  '103.86.99.100': 'NordVPN',
-  '1.1.1.1': 'Cloudflare',
-  '1.0.0.1': 'Cloudflare',
-  '9.9.9.9': 'Quad9',
-  '149.112.112.112': 'Quad9',
-  '8.8.8.8': 'Google',
-  '8.8.4.4': 'Google',
-  '208.67.222.222': 'OpenDNS',
-  '208.67.220.220': 'OpenDNS',
-  '94.140.14.14': 'AdGuard',
-  '94.140.15.15': 'AdGuard',
-};
+/** Display names for well-known resolvers (naming only — never used to award points). */
+const PROVIDER_NAMES = new Map<string, string>([
+  ['103.86.96.100', 'NordVPN'],
+  ['103.86.99.100', 'NordVPN'],
+  ['1.1.1.1', 'Cloudflare'],
+  ['1.0.0.1', 'Cloudflare'],
+  ['9.9.9.9', 'Quad9'],
+  ['149.112.112.112', 'Quad9'],
+  ['8.8.8.8', 'Google'],
+  ['8.8.4.4', 'Google'],
+  ['208.67.222.222', 'OpenDNS'],
+  ['208.67.220.220', 'OpenDNS'],
+  ['94.140.14.14', 'AdGuard'],
+  ['94.140.15.15', 'AdGuard'],
+]);
 
-/** DNS servers for the interface actually carrying traffic (VPN tunnel first). */
-export function activeDnsServers(s: SecuritySnapshot): string[] {
+export type DnsMode =
+  | 'vpn' // DNS rides the encrypted VPN tunnel
+  | 'doh' // every active server has DoH enabled in Windows
+  | 'plain' // resolvable but unencrypted (even if it's a reputable public resolver)
+  | 'none' // no connected interface with DNS — can't assess (captive portal, offline)
+  | 'unknown'; // network collector failed
+
+export interface DnsAssessment {
+  mode: DnsMode;
+  servers: string[];
+  provider: string | null;
+}
+
+/**
+ * Assesses the DNS actually carrying queries. Deliberately no fallback to an
+ * arbitrary adapter: if no connected interface has DNS (e.g. behind a captive
+ * portal), the answer is "can't assess", never a stale virtual adapter's config.
+ */
+export function assessDns(s: SecuritySnapshot): DnsAssessment {
   const net = s.network;
-  if (!net) return [];
+  if (!net) return { mode: 'unknown', servers: [], provider: null };
+
   if (s.vpn?.connected) {
     const tunnel = net.dns.find((d) => /nordlynx|nordvpn/i.test(d.interface));
-    if (tunnel) return tunnel.servers;
+    if (tunnel && tunnel.servers.length > 0) {
+      return { mode: 'vpn', servers: tunnel.servers, provider: nameFor(tunnel.servers) };
+    }
   }
+
   const connected = new Set(net.profiles.filter((p) => p.connected).map((p) => p.interface));
-  const entry = net.dns.find((d) => connected.has(d.interface)) ?? net.dns[0];
-  return entry ? entry.servers : [];
+  const servers = [
+    ...new Set(net.dns.filter((d) => connected.has(d.interface)).flatMap((d) => d.servers)),
+  ];
+  if (servers.length === 0) return { mode: 'none', servers: [], provider: null };
+
+  const doh = new Set(net.dohServers);
+  const allDoh = servers.every((ip) => doh.has(ip));
+  return { mode: allDoh ? 'doh' : 'plain', servers, provider: nameFor(servers) };
 }
 
-export function dnsProvider(s: SecuritySnapshot): string | null {
-  const servers = activeDnsServers(s);
+function nameFor(servers: string[]): string | null {
   for (const ip of servers) {
-    if (SECURE_DNS[ip]) return SECURE_DNS[ip];
+    const name = PROVIDER_NAMES.get(ip);
+    if (name) return name;
   }
   return null;
 }
 
 function secureDns(s: SecuritySnapshot): CheckState {
-  const servers = activeDnsServers(s);
-  if (!s.network) return null;
-  if (servers.length === 0) return false;
-  return servers.every((ip) => ip in SECURE_DNS);
+  switch (assessDns(s).mode) {
+    case 'vpn':
+    case 'doh':
+      return true;
+    case 'plain':
+      return false;
+    default:
+      return null;
+  }
+}
+
+/** Defender in passive mode with a third-party AV registered = still protected. */
+export function activeThirdPartyAv(s: SecuritySnapshot): string | null {
+  const d = s.defender;
+  if (!d) return null;
+  if (/passive|sxs|edr/i.test(d.runningMode) && d.thirdPartyAv.length > 0) {
+    return d.thirdPartyAv[0];
+  }
+  return null;
 }
 
 function windowsUpdated(s: SecuritySnapshot): CheckState {
@@ -86,13 +130,19 @@ function windowsUpdated(s: SecuritySnapshot): CheckState {
 // Weights sum to 100. Tune here and only here.
 export const CHECKS: Check[] = [
   {
-    id: 'rtp', group: 'Antivirus', label: 'Real-time protection', points: 25,
-    evaluate: (s) => s.defender && (s.defender.realTimeProtection && s.defender.antivirusEnabled),
+    id: 'rtp', group: 'Antivirus', label: 'Antivirus active', points: 25,
+    evaluate: (s) =>
+      s.defender &&
+      ((s.defender.antivirusEnabled && s.defender.realTimeProtection) ||
+        activeThirdPartyAv(s) !== null),
     recommendation: 'Turn on Real-time protection in Windows Security → Virus & threat protection settings.',
   },
   {
     id: 'cloud', group: 'Antivirus', label: 'Cloud-delivered protection', points: 5,
-    evaluate: (s) => s.defender && s.defender.cloudProtection,
+    // With a third-party AV active, Defender's cloud setting is moot — count
+    // it as covered rather than nagging about a setting that can't apply.
+    evaluate: (s) =>
+      s.defender && (activeThirdPartyAv(s) !== null ? true : s.defender.cloudProtection),
     recommendation: 'Turn on Cloud-delivered protection in Windows Security for faster response to new threats.',
   },
   {
@@ -102,7 +152,8 @@ export const CHECKS: Check[] = [
   },
   {
     id: 'sig', group: 'Antivirus', label: 'Definitions up to date', points: 5,
-    evaluate: (s) => s.defender && s.defender.signatureAgeDays <= 1,
+    evaluate: (s) =>
+      s.defender && s.defender.signatureAgeDays !== null && s.defender.signatureAgeDays <= 1,
     recommendation: 'Check for protection updates in Windows Security — your virus definitions are getting old.',
   },
   {
@@ -136,9 +187,9 @@ export const CHECKS: Check[] = [
     recommendation: 'Open Windows Update and install pending updates (restart if one is waiting).',
   },
   {
-    id: 'dns', group: 'Network', label: 'Secure DNS', points: 5,
+    id: 'dns', group: 'Network', label: 'Encrypted DNS', points: 5,
     evaluate: secureDns,
-    recommendation: 'Your DNS requests go through your router’s default. Consider a secure resolver like Cloudflare (1.1.1.1) or your VPN’s DNS.',
+    recommendation: 'Your DNS lookups travel unencrypted. Connect your VPN, or turn on DNS over HTTPS (Settings → Network & internet → Wi-Fi → DNS server assignment → Encrypted).',
   },
   {
     id: 'vpn-installed', group: 'Network', label: 'VPN available', points: 3,
@@ -180,5 +231,8 @@ export function computeScore(s: SecuritySnapshot): ScoreReport {
     };
   });
   const score = results.reduce((sum, r) => sum + r.earned, 0);
-  return { score, band: bandFor(score), results };
+  const unknownPoints = results
+    .filter((r) => r.state === 'unknown')
+    .reduce((sum, r) => sum + r.points, 0);
+  return { score, band: bandFor(score), results, unknownPoints };
 }

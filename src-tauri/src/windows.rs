@@ -4,8 +4,11 @@ use crate::powershell::run_json;
 // Read-only sources, all usable without elevation:
 // - Secure Boot: HKLM SecureBoot\State registry value (Confirm-SecureBootUEFI needs admin)
 // - BitLocker: Shell COM property System.Volume.BitLockerProtection (Get-BitLockerVolume needs admin)
-// - Windows Update: Microsoft.Update.AutoUpdate COM results + RebootRequired key presence
+// - Windows Update: Microsoft.Update.AutoUpdate COM results + RebootRequired key
+//   presence. The COM DateTimes arrive Kind=Unspecified but are UTC — SpecifyKind
+//   makes ToString('o') emit the offset so the frontend doesn't skew them.
 const SCRIPT: &str = r#"
+$env:PSModulePath = [Environment]::GetFolderPath('System') + '\WindowsPowerShell\v1.0\Modules;' + [Environment]::GetFolderPath('ProgramFiles') + '\WindowsPowerShell\Modules';
 [Console]::OutputEncoding=[Text.Encoding]::UTF8;
 $ErrorActionPreference='Stop';
 $os = Get-CimInstance Win32_OperatingSystem;
@@ -16,8 +19,8 @@ try { $bl = (New-Object -ComObject Shell.Application).NameSpace('C:').Self.Exten
 $ls = $null; $li = $null;
 try {
   $r = (New-Object -ComObject Microsoft.Update.AutoUpdate).Results;
-  if ($r.LastSearchSuccessDate -is [datetime]) { $ls = $r.LastSearchSuccessDate.ToString('o') };
-  if ($r.LastInstallationSuccessDate -is [datetime]) { $li = $r.LastInstallationSuccessDate.ToString('o') }
+  if ($r.LastSearchSuccessDate -is [datetime]) { $ls = [datetime]::SpecifyKind($r.LastSearchSuccessDate, 'Utc').ToString('o') };
+  if ($r.LastInstallationSuccessDate -is [datetime]) { $li = [datetime]::SpecifyKind($r.LastInstallationSuccessDate, 'Utc').ToString('o') }
 } catch { };
 $rb = Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired';
 [pscustomobject]@{

@@ -55,6 +55,13 @@ Everything below is collected without admin rights and without modifying anythin
 - NordVPN "connected" is inferred from the NordLynx adapter being Up (covers NordLynx
   protocol; OpenVPN-TAP fallback also checked). Server name/protocol require Nord's CLI
   and are deferred.
-- If Defender is not the active AV (third-party AV installed), `Get-MpComputerStatus`
-  reports Defender in passive/EDR mode; the UI shows running mode but Phase 1 does not
-  enumerate third-party AV via Security Center WMI (`root/SecurityCenter2`) yet.
+- Third-party AV counts as protection only when its SecurityCenter2 `productState`
+  says real-time protection is on (bit 0x1000); a registered-but-disabled/expired
+  product fails closed. Its definitions age (low byte) is not yet checked.
+- The Rust side still resolves the PowerShell path from the `SystemRoot` environment
+  variable (scripts themselves now use `[Environment]::GetFolderPath`, which asks the
+  OS); moving the Rust side to `GetSystemDirectoryW` is backlog. IPv6 DNS resolvers
+  are not collected/assessed yet.
+- "Encrypted DNS" passes only for VPN-tunneled DNS or Windows DoH actually enabled per
+  adapter. A reputable public resolver over plain UDP/53 deliberately does not pass;
+  DoT and router-side encryption are invisible to Sentinel.

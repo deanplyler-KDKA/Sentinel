@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getSecuritySnapshot, isTauri } from '../lib/api';
-import { computeScore, dnsProvider, activeDnsServers } from '../lib/score';
+import { activeThirdPartyAv, assessDns, computeScore } from '../lib/score';
 import { relativeTime, timeOfDay, uptimeSince } from '../lib/format';
 import type { SecuritySnapshot } from '../types/security';
 import { ScoreRing } from '../components/ScoreRing';
@@ -61,16 +61,22 @@ export function Dashboard() {
   }
 
   const { defender, firewall, system, network, vpn } = snapshot;
-  const overall: PillState =
-    report.band === 'Excellent' || report.band === 'Protected'
+  // Fail closed on the headline: if anything couldn't be measured, the
+  // at-a-glance verdict must not read as green-and-certain.
+  const incomplete =
+    snapshot.errors.length > 0 || report.results.some((r) => r.state === 'unknown');
+  const overall: PillState = incomplete
+    ? 'warn'
+    : report.band === 'Excellent' || report.band === 'Protected'
       ? 'ok'
       : report.band === 'Needs attention'
         ? 'warn'
         : 'bad';
+  const overallLabel = incomplete ? 'Incomplete' : report.band;
 
-  const dnsServers = activeDnsServers(snapshot);
-  const dnsName = dnsProvider(snapshot);
-  const dnsSecure = report.results.find((r) => r.id === 'dns')?.state === 'pass';
+  const dns = assessDns(snapshot);
+  const dnsSecure = dns.mode === 'vpn' || dns.mode === 'doh';
+  const thirdPartyAv = activeThirdPartyAv(snapshot);
   const activeProfile = network?.profiles.find((p) => p.connected && !/nordlynx|nordvpn/i.test(p.interface))
     ?? network?.profiles[0];
   const updatesOk = report.results.find((r) => r.id === 'updates')?.state === 'pass';
@@ -87,7 +93,7 @@ export function Dashboard() {
         </div>
         <div className="topbar-right">
           {!isTauri && <span className="mock-badge">Preview data</span>}
-          <StatusPill state={overall} label={report.band} />
+          <StatusPill state={overall} label={overallLabel} />
           <button className="refresh-btn" onClick={refresh} disabled={loading} title="Refresh now">
             <RefreshIcon />
             {loading ? 'Checking…' : 'Refresh'}
@@ -105,7 +111,10 @@ export function Dashboard() {
 
       <section className="hero">
         <div className="hero-score">
-          <ScoreRing score={report.score} band={report.band} />
+          <ScoreRing score={report.score} band={report.band} incomplete={incomplete} />
+          {report.unknownPoints > 0 && (
+            <p className="hero-unmeasured">{report.unknownPoints} pts couldn’t be measured</p>
+          )}
           <p className="hero-checked">Last checked {relativeTime(snapshot.collectedAt)}</p>
         </div>
         <Recommendations results={report.results} />
@@ -115,23 +124,54 @@ export function Dashboard() {
         <SecurityCard
           icon={<ShieldIcon />}
           title="Antivirus"
-          subtitle="Microsoft Defender"
-          state={defender ? (defender.antivirusEnabled && defender.realTimeProtection ? 'ok' : 'bad') : 'unknown'}
+          subtitle={thirdPartyAv ?? 'Microsoft Defender'}
+          state={
+            defender
+              ? (defender.antivirusEnabled && defender.realTimeProtection) || thirdPartyAv
+                ? 'ok'
+                : 'bad'
+              : 'unknown'
+          }
         >
           {defender ? (
-            <>
-              <DetailRow label="Real-time protection" {...onOff(defender.realTimeProtection)} />
-              <DetailRow label="Cloud protection" {...onOff(defender.cloudProtection, 'warn')} />
-              <DetailRow label="Tamper protection" {...onOff(defender.tamperProtection, 'warn')} />
-              <DetailRow label="Behavior monitoring" {...onOff(defender.behaviorMonitoring, 'warn')} />
-              <DetailRow
-                label="Definitions"
-                value={defender.signatureAgeDays <= 1 ? 'Current' : `${defender.signatureAgeDays} days old`}
-                tone={defender.signatureAgeDays <= 1 ? 'good' : 'warn'}
-              />
-              <DetailRow label="Version" value={defender.signatureVersion} />
-              <DetailRow label="Last quick scan" value={timeOfDay(defender.quickScanEnd)} />
-            </>
+            thirdPartyAv ? (
+              <>
+                <DetailRow label="Active antivirus" value={thirdPartyAv} tone="good" />
+                <DetailRow label="Microsoft Defender" value={defender.runningMode} />
+                <p className="card-note">
+                  Defender is standing by in passive mode while {thirdPartyAv} handles protection.
+                </p>
+              </>
+            ) : (
+              <>
+                <DetailRow label="Real-time protection" {...onOff(defender.realTimeProtection)} />
+                <DetailRow label="Cloud protection" {...onOff(defender.cloudProtection, 'warn')} />
+                <DetailRow label="Tamper protection" {...onOff(defender.tamperProtection, 'warn')} />
+                <DetailRow label="Behavior monitoring" {...onOff(defender.behaviorMonitoring, 'warn')} />
+                <DetailRow
+                  label="Definitions"
+                  value={
+                    defender.signatureAgeDays === null
+                      ? 'Never updated'
+                      : defender.signatureAgeDays <= 1
+                        ? 'Current'
+                        : `${defender.signatureAgeDays} days old`
+                  }
+                  tone={
+                    defender.signatureAgeDays !== null && defender.signatureAgeDays <= 1
+                      ? 'good'
+                      : defender.signatureAgeDays === null
+                        ? 'bad'
+                        : 'warn'
+                  }
+                />
+                <DetailRow label="Version" value={defender.signatureVersion} />
+                <DetailRow label="Last quick scan" value={timeOfDay(defender.quickScanEnd)} />
+                {defender.runningMode !== 'Normal' && (
+                  <DetailRow label="Mode" value={defender.runningMode} tone="warn" />
+                )}
+              </>
+            )
           ) : (
             <p className="card-unknown">Defender status couldn’t be read.</p>
           )}
@@ -222,8 +262,8 @@ export function Dashboard() {
           icon={<GlobeIcon />}
           title="Network"
           subtitle={activeProfile ? activeProfile.name : 'No network'}
-          state={network ? (dnsSecure ? 'ok' : 'warn') : 'unknown'}
-          stateLabel={network ? (dnsSecure ? 'Protected' : 'Standard') : undefined}
+          state={network ? (dnsSecure ? 'ok' : dns.mode === 'plain' ? 'warn' : 'unknown') : 'unknown'}
+          stateLabel={network ? (dnsSecure ? 'Protected' : dns.mode === 'plain' ? 'Standard' : 'Unknown') : undefined}
         >
           {network ? (
             <>
@@ -234,10 +274,20 @@ export function Dashboard() {
               />
               <DetailRow
                 label="DNS"
-                value={dnsName ? `${dnsName} (secure)` : dnsSecure ? 'Secure' : 'Router default'}
-                tone={dnsSecure ? 'good' : 'warn'}
+                value={
+                  dns.mode === 'vpn'
+                    ? `${dns.provider ?? 'VPN'} (through VPN tunnel)`
+                    : dns.mode === 'doh'
+                      ? `${dns.provider ?? 'Encrypted'} (DNS over HTTPS)`
+                      : dns.mode === 'plain'
+                        ? dns.provider
+                          ? `${dns.provider} (unencrypted)`
+                          : 'Router default (unencrypted)'
+                        : 'Can’t assess'
+                }
+                tone={dnsSecure ? 'good' : dns.mode === 'plain' ? 'warn' : 'muted'}
               />
-              <DetailRow label="DNS servers" value={dnsServers.join(', ') || '—'} />
+              <DetailRow label="DNS servers" value={dns.servers.join(', ') || '—'} />
             </>
           ) : (
             <p className="card-unknown">Network status couldn’t be read.</p>
