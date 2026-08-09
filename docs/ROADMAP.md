@@ -27,12 +27,16 @@ Everything below is collected without admin rights and without modifying anythin
   URI) rather than changing settings directly; direct toggles come last, if ever
 - Requires adding the opener plugin + explicit security review (see SECURITY.md)
 
-## Phase 4 — Security timeline
+## Phase 4 — Security timeline (shipped in 0.2.0)
 
-- SQLite (via `tauri-plugin-sql` or `rusqlite`) storing events locally:
-  definition updates, scan completions, VPN connect/disconnect, firewall changes,
-  network changes, score changes
-- No cloud, no account, no telemetry
+- ✅ rusqlite (bundled, backend-only — deliberately NOT tauri-plugin-sql, which would
+  expose SQL to the WebView) storing events locally: definition updates, scans,
+  VPN connect/disconnect, firewall/Defender/ransomware toggles, network and DNS
+  changes, Windows updates, Secure Boot/BitLocker changes
+- ✅ Cross-session detection: state persists, so changes made while Sentinel was
+  closed appear on next launch tagged "while Sentinel was closed"
+- ✅ 5000-event retention, day-grouped Timeline panel, no cloud/account/telemetry
+- Remaining: score-change events (needs backend scoring), richer filtering/search
 
 ## Phase 5 — Network dashboard
 

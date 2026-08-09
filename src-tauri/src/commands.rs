@@ -1,5 +1,5 @@
-use crate::models::{CollectorError, SecuritySnapshot};
-use crate::{appdata, defender, firewall, network, nord, windows};
+use crate::models::{CollectorError, SecuritySnapshot, TimelineEvent};
+use crate::{appdata, defender, firewall, network, nord, timeline, windows};
 use serde::Serialize;
 
 /// The only IPC command in Phase 1. Zero arguments by design — the frontend
@@ -65,7 +65,7 @@ fn collect_snapshot() -> SecuritySnapshot {
         appdata::log(&format!("collector error [{}]: {}", e.source, e.message));
     }
 
-    SecuritySnapshot {
+    let snapshot = SecuritySnapshot {
         collected_at: chrono::Utc::now().to_rfc3339(),
         defender,
         firewall,
@@ -73,7 +73,15 @@ fn collect_snapshot() -> SecuritySnapshot {
         network,
         vpn,
         errors,
-    }
+    };
+    timeline::record(&snapshot);
+    snapshot
+}
+
+/// Returns the most recent timeline events (newest first). Zero arguments.
+#[tauri::command]
+pub fn get_timeline() -> Result<Vec<TimelineEvent>, String> {
+    timeline::list()
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -79,6 +79,20 @@ export interface CollectorError {
   message: string;
 }
 
+export type EventSeverity = 'good' | 'info' | 'warn' | 'bad';
+
+export interface TimelineEvent {
+  id: number;
+  ts: string;
+  category: string;
+  kind: string;
+  severity: EventSeverity;
+  message: string;
+  detail: string | null;
+  /** Change was detected on launch — it happened while Sentinel was closed. */
+  afterGap: boolean;
+}
+
 export interface SecuritySnapshot {
   collectedAt: string;
   defender: DefenderStatus | null;

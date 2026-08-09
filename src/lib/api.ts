@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { SecuritySnapshot } from '../types/security';
-import { mockSnapshot } from './mock';
+import type { SecuritySnapshot, TimelineEvent } from '../types/security';
+import { mockSnapshot, mockTimeline } from './mock';
 
 /** True when running inside the Tauri shell (vs. a plain browser tab). */
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -36,4 +36,13 @@ export async function exportDiagnostics(): Promise<string> {
 export async function resetAppData(): Promise<string> {
   if (!isTauri) return '(browser preview — nothing to reset)';
   return invoke<string>('reset_app_data');
+}
+
+/** Most recent security timeline events, newest first. */
+export async function getTimeline(): Promise<TimelineEvent[]> {
+  if (!isTauri) {
+    await new Promise((r) => setTimeout(r, 250));
+    return mockTimeline();
+  }
+  return invoke<TimelineEvent[]>('get_timeline');
 }

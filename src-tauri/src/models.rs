@@ -138,6 +138,21 @@ pub struct NetworkStatus {
     pub doh_servers: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TimelineEvent {
+    pub id: i64,
+    pub ts: String,
+    pub category: String,
+    pub kind: String,
+    pub severity: String,
+    pub message: String,
+    pub detail: Option<String>,
+    /// True when the change was detected on launch — it happened at some
+    /// point while Sentinel was closed, not at `ts`.
+    pub after_gap: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VpnStatus {

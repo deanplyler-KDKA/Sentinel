@@ -1,11 +1,12 @@
 //! Sentinel's own application data: diagnostic log, data-version marker,
 //! reset and diagnostics export.
 //!
-//! SCOPE GUARD (docs/SECURITY.md): this is the ONLY module in Sentinel that
-//! writes to disk, and it may only ever touch (a) Sentinel's own app-data
-//! directory and (b) a diagnostics file placed in the user's Downloads folder
-//! at the user's explicit request. It must never write anywhere else and must
-//! never touch Windows settings, the registry, or other applications' data.
+//! SCOPE GUARD (docs/SECURITY.md): appdata.rs and timeline.rs are the only
+//! modules in Sentinel that write to disk, and they may only ever touch
+//! (a) Sentinel's own app-data directory and (b) a diagnostics file placed in
+//! the user's Downloads folder at the user's explicit request. Nothing may
+//! write anywhere else, and nothing may ever touch Windows settings, the
+//! registry, or other applications' data.
 
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -15,9 +16,11 @@ use std::sync::OnceLock;
 use tauri::Manager;
 
 /// Bumped when the on-disk data layout changes; `migrate` runs the steps.
-/// v1: logs/ directory + data-version marker only (no database yet — the
-/// Phase 4 SQLite timeline will migrate via this same mechanism).
-const DATA_VERSION: u32 = 1;
+/// v1: logs/ directory + data-version marker.
+/// v2: adds sentinel.db (timeline). Created on demand by timeline::init and
+/// versioned internally via SQLite's user_version pragma, so the v1->v2
+/// migration itself needs no data transformation.
+const DATA_VERSION: u32 = 2;
 const MAX_LOG_BYTES: u64 = 1024 * 1024;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
@@ -172,9 +175,11 @@ pub fn export_diagnostics(app: &tauri::AppHandle) -> Result<String, String> {
     Ok(out.display().to_string())
 }
 
-/// Deletes Sentinel's own stored data (logs + data-version marker) and
-/// recreates a fresh layout. Does not touch the WebView cache while running —
-/// that is removed by uninstalling or deleting the app-data folder manually.
+/// Deletes Sentinel's own stored data (logs, data-version marker, timeline
+/// events) and recreates a fresh layout. Does not touch the WebView cache
+/// while running — that is removed by uninstalling or deleting the app-data
+/// folder manually. The timeline database file itself stays open; its
+/// contents are cleared via the timeline module.
 pub fn reset(app: &tauri::AppHandle) -> Result<String, String> {
     let _ = app; // reserved for future per-window cache clearing
     let dir = DATA_DIR.get().ok_or("app data not initialized")?;
@@ -183,6 +188,7 @@ pub fn reset(app: &tauri::AppHandle) -> Result<String, String> {
     let _ = fs::remove_file(version_file(dir));
     fs::create_dir_all(&logs).map_err(|e| format!("recreate logs: {e}"))?;
     let _ = fs::write(version_file(dir), DATA_VERSION.to_string());
+    crate::timeline::clear();
     log("application data was reset");
     Ok(dir.display().to_string())
 }

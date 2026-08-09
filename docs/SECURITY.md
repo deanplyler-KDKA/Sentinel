@@ -5,18 +5,20 @@
 1. **Phase 1 is read-only toward the system.** Sentinel does not modify Windows security
    settings, registry values, firewall rules, Defender configuration, services, network
    configuration, or NordVPN configuration. Every system query is a read. The only disk
-   writes in the entire app live in `src-tauri/src/appdata.rs` and are confined to
-   Sentinel's own data folder (diagnostic log, data-version marker) plus a
-   user-triggered diagnostics export into Downloads.
+   writes in the entire app live in `src-tauri/src/appdata.rs` and
+   `src-tauri/src/timeline.rs` (the SQLite event history) and are confined to
+   Sentinel's own data folder plus a user-triggered diagnostics export into Downloads.
 2. **Least privilege.** Sentinel runs as a standard user. Every Phase 1 metric was chosen
    (and verified on this machine) to be readable without elevation. Sources that require
    admin (`Confirm-SecureBootUEFI`, `Get-BitLockerVolume`) have documented non-admin
    equivalents (registry state key, Shell COM property), which Sentinel uses instead.
    Sentinel must never ask for elevation in order to *collect* information, and must never
    weaken any Windows security setting for any reason.
-3. **No arbitrary command execution.** The IPC surface is four zero-argument Tauri
+3. **No arbitrary command execution.** The IPC surface is five zero-argument Tauri
    commands (`get_security_snapshot`, `get_app_info`, `export_diagnostics`,
-   `reset_app_data`) — none accepts any input from the WebView. PowerShell scripts are compile-time constants; the runner
+   `reset_app_data`, `get_timeline`) — none accepts any input from the WebView.
+   Timeline SQL lives entirely in `timeline.rs` as fixed statements with bound
+   parameters; the WebView cannot express a query. PowerShell scripts are compile-time constants; the runner
    (`src-tauri/src/powershell.rs`) accepts only `&'static str`. Note this lifetime bound
    is a review convention backed by the type system, not an absolute proof — a leaked
    `String` could satisfy it — so the enforced rule is: only `const` script items are ever

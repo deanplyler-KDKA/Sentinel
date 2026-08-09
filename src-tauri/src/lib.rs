@@ -31,6 +31,7 @@ mod models;
 mod network;
 mod nord;
 mod powershell;
+mod timeline;
 mod windows;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -41,6 +42,11 @@ pub fn run() {
             // unavailable — logging and reset just won't work.
             if let Err(e) = appdata::init(app.handle()) {
                 eprintln!("appdata init failed: {e}");
+            } else if let Some(dir) = appdata::data_dir() {
+                // Timeline is best-effort: without it Sentinel still monitors.
+                if let Err(e) = timeline::init(dir) {
+                    appdata::log(&format!("timeline init failed: {e}"));
+                }
             }
             fit_window_to_monitor(app.handle());
             Ok(())
@@ -49,7 +55,8 @@ pub fn run() {
             commands::get_security_snapshot,
             commands::get_app_info,
             commands::export_diagnostics,
-            commands::reset_app_data
+            commands::reset_app_data,
+            commands::get_timeline
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

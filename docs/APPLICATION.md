@@ -22,17 +22,21 @@
 | What | Where |
 |---|---|
 | Diagnostic log (1 MB cap + one rotation) | `%LOCALAPPDATA%\com.deanplyler.sentinel\logs\sentinel.log` |
+| Security timeline (SQLite, 5000-event cap) | `%LOCALAPPDATA%\com.deanplyler.sentinel\sentinel.db` |
 | Data-version marker | `%LOCALAPPDATA%\com.deanplyler.sentinel\data-version` |
 | WebView2 cache (managed by Windows) | `%LOCALAPPDATA%\com.deanplyler.sentinel\EBWebView\` |
 | Installed program | `%LOCALAPPDATA%\Sentinel\` |
 
 ## Data migration
 
-The data folder carries a `data-version` marker (currently **1**). On startup Sentinel
-compares it to the build's version and runs sequential migration steps if the stored
-version is older (`src-tauri/src/appdata.rs::migrate`). A *newer* stored version (i.e.
-a downgrade) is logged and the data is left untouched. The Phase 4 SQLite timeline
-will migrate through this same mechanism plus SQLite's `user_version` pragma.
+The data folder carries a `data-version` marker (currently **2**: v2 added the
+timeline database). On startup Sentinel compares it to the build's version and runs
+sequential migration steps if the stored version is older
+(`src-tauri/src/appdata.rs::migrate`). A *newer* stored version (i.e. a downgrade) is
+logged and the data is left untouched; a corrupt marker refuses migration. The
+timeline database versions its own schema via SQLite's `user_version` pragma
+(`timeline.rs::ensure_schema`), same rules: older schemas migrate, newer are left
+alone.
 
 ## Reset application data
 
