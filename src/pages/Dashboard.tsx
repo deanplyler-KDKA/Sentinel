@@ -15,7 +15,7 @@ import {
   LockIcon,
   MonitorIcon,
   RefreshIcon,
-  ShieldCheckIcon,
+  SentinelMark,
   ShieldIcon,
 } from '../components/Icons';
 
@@ -53,7 +53,7 @@ export function Dashboard() {
   if (!snapshot || !report) {
     return (
       <div className="boot-screen">
-        <div className="boot-mark"><ShieldIcon size={44} /></div>
+        <div className="boot-mark"><SentinelMark size={44} /></div>
         <h1>Sentinel</h1>
         <p>{loadError ? `Couldn’t read security status: ${loadError}` : 'Checking your protection…'}</p>
       </div>
@@ -85,7 +85,7 @@ export function Dashboard() {
     <div className="dashboard">
       <header className="topbar">
         <div className="brand">
-          <div className="brand-mark"><ShieldCheckIcon size={22} /></div>
+          <div className="brand-mark"><SentinelMark size={24} /></div>
           <div>
             <h1>SENTINEL</h1>
             <p>Personal Security Center</p>

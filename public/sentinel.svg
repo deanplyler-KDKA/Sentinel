@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101b33"/>
+      <stop offset="1" stop-color="#080d19"/>
+    </linearGradient>
+    <linearGradient id="sweep" x1="0.1" y1="0.9" x2="0.9" y2="0.1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="0.55" stop-color="#22a8c4"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f2f6fc"/>
+      <stop offset="1" stop-color="#b9c6da"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#34d399" stop-opacity="0.85"/>
+      <stop offset="0.45" stop-color="#34d399" stop-opacity="0.28"/>
+      <stop offset="1" stop-color="#34d399" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="0.32" cy="0.25" r="1">
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.16"/>
+      <stop offset="0.6" stop-color="#3b82f6" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- background tile -->
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="228" fill="url(#vignette)"/>
+
+  <!-- radar sweep: 270° ring, gap on the east side, leading tip at NE -->
+  <circle cx="512" cy="512" r="330" fill="none" stroke="#94a3b8" stroke-opacity="0.14"
+          stroke-width="58"/>
+  <!-- dasharray in user units: circumference 2π·330 ≈ 2073.5; 270° arc = 1555.1 -->
+  <circle cx="512" cy="512" r="330" fill="none" stroke="url(#sweep)" stroke-width="58"
+          stroke-linecap="round" stroke-dasharray="1555.1 518.4"
+          transform="rotate(45 512 512)"/>
+
+  <!-- sentry light at the sweep's leading edge (NE) -->
+  <circle cx="745.3" cy="278.7" r="118" fill="url(#halo)"/>
+  <circle cx="745.3" cy="278.7" r="46" fill="#34d399"/>
+  <circle cx="745.3" cy="278.7" r="46" fill="none" stroke="#eafff6" stroke-opacity="0.55" stroke-width="8"/>
+
+  <!-- watchtower obelisk -->
+  <path d="M 470 348
+           Q 470 330 488 330 L 536 330 Q 554 330 554 348
+           L 576 668 Q 577 686 559 686 L 465 686 Q 447 686 448 668 Z"
+        fill="url(#tower)"/>
+  <!-- viewing slit -->
+  <rect x="484" y="408" width="56" height="20" rx="10" fill="#0b1220"/>
+  <!-- base plinth -->
+  <rect x="414" y="686" width="196" height="30" rx="15" fill="#8fa0b8"/>
+  <rect x="386" y="730" width="252" height="34" rx="17" fill="#64748b"/>
+</svg>

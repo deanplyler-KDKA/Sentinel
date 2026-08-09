@@ -13,6 +13,25 @@ const base = (size: number) => ({
   strokeLinejoin: 'round' as const,
 });
 
+/** The Sentinel brand mark: radar-sweep ring, sentry light, watchtower. */
+export const SentinelMark = ({ size = 22 }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <circle cx="12" cy="12" r="9.2" stroke="currentColor" strokeOpacity="0.3" strokeWidth="2" />
+    <circle
+      cx="12"
+      cy="12"
+      r="9.2"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeDasharray="43.4 14.4"
+      transform="rotate(45 12 12)"
+    />
+    <circle cx="18.5" cy="5.5" r="2.1" fill="currentColor" stroke="none" />
+    <path d="M10.4 7.2h3.2l1.2 9.6H9.2Z" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const ShieldIcon = ({ size = 20 }: IconProps) => (
   <svg {...base(size)}>
     <path d="M12 2.5 4.5 5.4v5.2c0 4.6 3.1 8.9 7.5 10.4 4.4-1.5 7.5-5.8 7.5-10.4V5.4L12 2.5Z" />
