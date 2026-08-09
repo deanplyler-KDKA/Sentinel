@@ -17,7 +17,10 @@ fn fit_window_to_monitor(app: &tauri::AppHandle) {
     let scale = monitor.scale_factor();
     let logical_w = monitor.size().width as f64 / scale;
     let logical_h = monitor.size().height as f64 / scale;
-    let w = f64::min(1200.0, logical_w - 80.0).max(860.0);
+    // Short displays (scaled ultrawides) trade width for height: the UI
+    // switches to a sidebar layout that needs the extra columns.
+    let max_w = if logical_h < 760.0 { 1640.0 } else { 1200.0 };
+    let w = f64::min(max_w, logical_w - 80.0).max(860.0);
     let h = f64::min(820.0, logical_h - 110.0).max(520.0);
     let _ = win.set_size(tauri::LogicalSize::new(w, h));
     let _ = win.center();
