@@ -2,15 +2,29 @@
 
 Sentinel is a local application. In plain terms:
 
-- **Nothing leaves your PC**, with one explicit, user-initiated exception. Sentinel makes
-  no network connections of its own — no telemetry, no analytics, no crash reporting
-  services, no update checks, no accounts. The single exception is the **internet speed
-  test**: when *you* click "Run speed test", Sentinel downloads throwaway data from and
-  uploads meaningless zero-bytes to Cloudflare's public speed service
-  (speed.cloudflare.com). No personal data is sent, nothing identifies you beyond an
-  ordinary HTTPS request, results are stored only on this PC, and it never runs
-  automatically. The WebView still has no network capability at all — the test runs in
-  the Rust backend.
+- **No telemetry, ever.** Sentinel has no account, no analytics, no crash-reporting
+  service, no update check, and never uploads system information. Nothing about your
+  computer is sent anywhere. There are exactly two outbound network paths, both
+  measuring *your* connection, neither carrying personal data:
+
+  1. **Connection-quality probe (automatic).** While the app is open, roughly every five
+     minutes Sentinel opens brief TCP connections to two well-known public DNS resolvers
+     (1.1.1.1 and 8.8.8.8 on port 443) and does one DNS lookup of `www.microsoft.com`, to
+     measure latency, jitter and loss. These are hard-coded addresses; no data is sent
+     beyond establishing the connection, and Cloudflare/Google see only that your IP
+     connected — the same as loading any website. This is not telemetry: nothing about
+     you or your PC is transmitted. You can watch it run in Settings → Collector
+     diagnostics (`network/probe`).
+  2. **Internet speed test (only when you click it).** Downloads throwaway data from and
+     uploads meaningless zero-bytes to Cloudflare's public speed service
+     (speed.cloudflare.com), timed to measure throughput. Never runs automatically;
+     results are stored only on this PC.
+
+  The WebView itself has no network capability at all — both paths run in the Rust
+  backend, to fixed addresses that are never constructed from external input. The speed
+  test validates TLS against a bundled root set (not the Windows certificate store), so
+  it fails closed rather than trusting a locally-injected root — but it will not work
+  behind a corporate TLS-inspection proxy.
 - **What Sentinel reads:** the status of Windows security features (Defender, Firewall,
   Secure Boot, BitLocker, Windows Update), network configuration (connection profiles,
   DNS servers, DoH state), and whether NordVPN is installed/running/connected. All of it

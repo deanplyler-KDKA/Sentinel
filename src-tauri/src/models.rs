@@ -159,7 +159,8 @@ pub struct SpeedTestRow {
     pub id: i64,
     pub ts: String,
     pub down_mbps: f64,
-    pub up_mbps: f64,
+    /// None when the upload leg didn't complete (SQL NULL) — not 0.
+    pub up_mbps: Option<f64>,
     pub ping_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
 }

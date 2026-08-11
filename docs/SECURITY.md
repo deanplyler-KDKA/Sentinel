@@ -20,12 +20,18 @@
    export, reset) — none accepts any input from the WebView. All SQL lives in
    `timeline.rs` as fixed statements with bound parameters; the WebView cannot express
    a query, a path, a hostname, or a script.
-4. **Network communication is a single, fixed, user-initiated path.** Only
-   `speedtest.rs` talks to the internet, only to hard-coded Cloudflare speed endpoints,
-   only when the user clicks the button, guarded against concurrent runs. The
-   connection-quality probe opens TCP connections to two hard-coded anycast resolvers.
-   No URL, hostname, or address anywhere in the app is runtime-constructed from
-   external input. PowerShell scripts are compile-time constants; the runner
+4. **Network communication is limited to two fixed-address paths.** (a) `speedtest.rs`
+   talks to hard-coded Cloudflare speed endpoints, only when the user clicks the button,
+   single-flight guarded, redirects disabled so it can only ever reach that host.
+   (b) `netprobe.rs` opens TCP connections to two hard-coded anycast resolvers
+   (1.1.1.1 / 8.8.8.8) and resolves one fixed hostname, automatically every ~5 minutes
+   while the app is open, also single-flight guarded. Both are documented in
+   docs/PRIVACY.md. Every destination address and hostname is a compile-time constant —
+   none is constructed from external input. (Note: `startup.rs` reads executable paths
+   from user-writable registry Run entries, but only to read file version metadata. It
+   rejects UNC, `\\?\`, device and drive-relative paths, and requires the volume to be
+   DriveType 'Fixed' — so neither a registry value nor a user-created mapped network
+   drive can make Sentinel open an outbound connection. See the guard there.) PowerShell scripts are compile-time constants; the runner
    (`src-tauri/src/powershell.rs`) accepts only `&'static str`. Note this lifetime bound
    is a review convention backed by the type system, not an absolute proof — a leaked
    `String` could satisfy it — so the enforced rule is: only `const` script items are ever

@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, Networks, ProcessRefreshKind,
@@ -17,6 +17,9 @@ use crate::diag;
 const SAMPLE_INTERVAL: Duration = Duration::from_secs(2);
 const WINDOW_SAMPLES: usize = 180; // ~6 minutes at 2s
 const TOP_N: usize = 8;
+/// If the sampler thread dies, get_overview must stop serving frozen numbers
+/// as if they were live (F9). Data older than this is treated as stale.
+const STALE_AFTER: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -98,8 +101,14 @@ fn sampler_loop() {
     let mut disks = Disks::new_with_refreshed_list();
     let mut tick: u64 = 0;
 
+    let mut last_tick = Instant::now();
     loop {
         std::thread::sleep(SAMPLE_INTERVAL);
+        // Rates use the real elapsed period, not the nominal 2s — sleep plus
+        // work makes the true interval slightly longer, which would otherwise
+        // overstate every byte-rate by a few percent.
+        let elapsed_secs = last_tick.elapsed().as_secs_f64().max(0.1);
+        last_tick = Instant::now();
         tick += 1;
         sys.refresh_specifics(refresh);
         sys.refresh_processes_specifics(
@@ -108,16 +117,15 @@ fn sampler_loop() {
             ProcessRefreshKind::nothing().with_cpu().with_memory().with_disk_usage(),
         );
         networks.refresh(true);
-        if tick % 30 == 0 {
+        if tick.is_multiple_of(30) {
             // Disk capacities change slowly; refresh the list once a minute.
             disks.refresh(true);
         }
 
         let cores = sys.cpus().len().max(1);
-        let elapsed_secs = SAMPLE_INTERVAL.as_secs_f64();
 
         let (mut rx, mut tx) = (0u64, 0u64);
-        for (_, data) in networks.iter() {
+        for data in networks.values() {
             rx += data.received();
             tx += data.transmitted();
         }
@@ -219,8 +227,18 @@ pub fn get_series() -> Vec<PerfPoint> {
     series().lock().map(|s| s.iter().cloned().collect()).unwrap_or_default()
 }
 
-/// None until the first sample lands (~2s after launch) — the UI shows
-/// "Checking", never fabricated zeros.
+/// None until the first sample lands (~2s after launch), and None again if the
+/// sampler has gone silent (thread died) — the UI shows "Checking" rather than
+/// frozen numbers. Never fabricates zeros.
 pub fn get_overview() -> Option<PerfOverview> {
-    overview_cell().lock().ok().and_then(|c| c.clone())
+    let overview = overview_cell().lock().ok().and_then(|c| c.clone())?;
+    let fresh = chrono::DateTime::parse_from_rfc3339(&overview.sampled_at)
+        .map(|t| {
+            (chrono::Utc::now() - t.with_timezone(&chrono::Utc))
+                .to_std()
+                .map(|age| age < STALE_AFTER)
+                .unwrap_or(false)
+        })
+        .unwrap_or(false);
+    fresh.then_some(overview)
 }

@@ -19,8 +19,9 @@ use crate::appdata;
 use crate::models::{SecuritySnapshot, TimelineEvent};
 
 /// Bump together with a migration branch in `ensure_schema` when the schema
-/// changes. v2 added the speedtests table.
-const SCHEMA_VERSION: i64 = 2;
+/// changes. v2 added the speedtests table; v3 made up_mbps nullable so a
+/// non-measured upload is NULL rather than a misleading 0.
+const SCHEMA_VERSION: i64 = 3;
 const MAX_EVENTS: i64 = 5000;
 const LIST_LIMIT: i64 = 300;
 
@@ -60,27 +61,56 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 ts TEXT NOT NULL,
                 down_mbps REAL NOT NULL,
-                up_mbps REAL NOT NULL,
+                up_mbps REAL,
                 ping_ms REAL,
                 jitter_ms REAL
             );
-            PRAGMA user_version = 2;",
+            PRAGMA user_version = 3;",
         )
         .map_err(|e| format!("create schema: {e}"))?;
-    } else if version == 1 {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS speedtests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                ts TEXT NOT NULL,
-                down_mbps REAL NOT NULL,
-                up_mbps REAL NOT NULL,
-                ping_ms REAL,
-                jitter_ms REAL
-            );
-            PRAGMA user_version = 2;",
-        )
-        .map_err(|e| format!("migrate schema v1->v2: {e}"))?;
-        appdata::log("timeline schema migrated v1 -> v2 (speedtests)");
+    } else if version < SCHEMA_VERSION {
+        // Sequential migrations. Each step is idempotent and leaves
+        // user_version at the step it completed.
+        if version < 2 {
+            conn.execute_batch(
+                "CREATE TABLE IF NOT EXISTS speedtests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    down_mbps REAL NOT NULL,
+                    up_mbps REAL NOT NULL,
+                    ping_ms REAL,
+                    jitter_ms REAL
+                );
+                PRAGMA user_version = 2;",
+            )
+            .map_err(|e| format!("migrate schema v1->v2: {e}"))?;
+            appdata::log("timeline schema migrated v1 -> v2 (speedtests)");
+        }
+        if version < 3 {
+            // SQLite can't drop a NOT NULL constraint in place — rebuild.
+            // Any pre-existing 0 upload rows were the old "not measured"
+            // sentinel, so they become NULL.
+            conn.execute_batch(
+                "BEGIN;
+                 CREATE TABLE speedtests_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    ts TEXT NOT NULL,
+                    down_mbps REAL NOT NULL,
+                    up_mbps REAL,
+                    ping_ms REAL,
+                    jitter_ms REAL
+                 );
+                 INSERT INTO speedtests_new(id, ts, down_mbps, up_mbps, ping_ms, jitter_ms)
+                    SELECT id, ts, down_mbps, NULLIF(up_mbps, 0), ping_ms, jitter_ms
+                    FROM speedtests;
+                 DROP TABLE speedtests;
+                 ALTER TABLE speedtests_new RENAME TO speedtests;
+                 COMMIT;
+                 PRAGMA user_version = 3;",
+            )
+            .map_err(|e| format!("migrate schema v2->v3: {e}"))?;
+            appdata::log("timeline schema migrated v2 -> v3 (nullable up_mbps)");
+        }
     } else if version > SCHEMA_VERSION {
         // A newer Sentinel wrote this database; read-compatible or not, do not
         // modify its schema. Recording may fail and will be logged.
@@ -402,7 +432,7 @@ pub fn clear() {
 pub fn save_speedtest(
     ts: &str,
     down_mbps: f64,
-    up_mbps: f64,
+    up_mbps: Option<f64>,
     ping_ms: Option<f64>,
     jitter_ms: Option<f64>,
 ) -> Result<i64, String> {
@@ -417,15 +447,19 @@ pub fn save_speedtest(
     Ok(conn.last_insert_rowid())
 }
 
-pub fn record_speedtest_event(down_mbps: f64, up_mbps: f64) {
+pub fn record_speedtest_event(down_mbps: f64, up_mbps: Option<f64>) {
     let Some(db) = DB.get() else { return };
     let Ok(conn) = db.lock() else { return };
+    let detail = match up_mbps {
+        Some(up) => format!("{down_mbps:.0} Mbps down / {up:.0} Mbps up"),
+        None => format!("{down_mbps:.0} Mbps down / upload not measured"),
+    };
     let events = vec![NewEvent {
         category: "network",
         kind: "speed-test",
         severity: "info",
         message: "Speed test completed".into(),
-        detail: Some(format!("{:.0} Mbps down / {:.0} Mbps up", down_mbps, up_mbps)),
+        detail: Some(detail),
     }];
     let _ = insert_events(&conn, &events, false);
 }
@@ -594,7 +628,7 @@ mod tests {
     }
 
     #[test]
-    fn schema_migrates_v1_to_v2() {
+    fn schema_migrates_v1_to_current() {
         let conn = Connection::open_in_memory().unwrap();
         // Simulate a v1 database: events + state, user_version = 1, no speedtests.
         conn.execute_batch(
@@ -606,10 +640,54 @@ mod tests {
         .unwrap();
         ensure_schema(&conn).unwrap();
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, 2);
-        // speedtests table now exists and is usable
+        assert_eq!(v, SCHEMA_VERSION);
+        // speedtests table exists and accepts a NULL upload (v3 shape)
         conn.execute(
-            "INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('t', 1.0, 2.0)",
+            "INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('t', 1.0, NULL)",
+            [],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn schema_v2_to_v3_makes_upload_nullable_and_converts_zero_sentinels() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Simulate a v2 database with the old NOT NULL column and a 0 sentinel
+        // row written by the pre-N4 code.
+        conn.execute_batch(
+            "CREATE TABLE events(id INTEGER PRIMARY KEY, ts TEXT, category TEXT, kind TEXT,
+                severity TEXT, message TEXT, detail TEXT, after_gap INTEGER);
+             CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT);
+             CREATE TABLE speedtests(id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT NOT NULL,
+                down_mbps REAL NOT NULL, up_mbps REAL NOT NULL, ping_ms REAL, jitter_ms REAL);
+             INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('a', 500.0, 0.0);
+             INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('b', 400.0, 42.0);
+             PRAGMA user_version = 2;",
+        )
+        .unwrap();
+        ensure_schema(&conn).unwrap();
+
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 3);
+
+        // The 0 sentinel became NULL; the real measurement survived intact.
+        let sentinel: Option<f64> = conn
+            .query_row("SELECT up_mbps FROM speedtests WHERE ts = 'a'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sentinel, None);
+        let real: Option<f64> = conn
+            .query_row("SELECT up_mbps FROM speedtests WHERE ts = 'b'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(real, Some(42.0));
+        // Download values are untouched by the migration.
+        let down: f64 = conn
+            .query_row("SELECT down_mbps FROM speedtests WHERE ts = 'a'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(down, 500.0);
+
+        // And the column now genuinely accepts NULL.
+        conn.execute(
+            "INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('c', 1.0, NULL)",
             [],
         )
         .unwrap();

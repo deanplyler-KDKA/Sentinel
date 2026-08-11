@@ -263,11 +263,28 @@ export function computeOverall(
   if (network) parts.push([network.score, 1]);
   const weighted = parts.reduce((s, [v, w]) => s + v * w, 0) / parts.reduce((s, [, w]) => s + w, 0);
 
-  const anyUnknownCritical = security.results.some((r) => r.state === 'unknown');
-  if (weighted >= 93 && !anyUnknownCritical) return { state: 'Excellent', reason: null };
-  if (weighted >= 80) return { state: 'Healthy', reason: null };
-  if (weighted >= 60) return { state: 'Needs Attention', reason: null };
-  return { state: 'Action Recommended', reason: null };
+  const band: OverallState =
+    weighted >= 93 ? 'Excellent'
+      : weighted >= 80 ? 'Healthy'
+        : weighted >= 60 ? 'Needs Attention'
+          : 'Action Recommended';
+
+  // Fail closed, without inverting severity: an unmeasured check may only
+  // DOWNGRADE a green headline, never soften a genuinely bad one. Factors
+  // deliberately excluded from scoring (points === 0, e.g. a battery that
+  // can't report wear) are not "unknown" for this purpose.
+  const anyUnknown =
+    security.results.some((r) => r.state === 'unknown') ||
+    pc.factors.some((f) => f.state === 'unknown' && f.points > 0) ||
+    (network ? network.factors.some((f) => f.state === 'unknown' && f.points > 0) : false);
+  if (anyUnknown && (band === 'Excellent' || band === 'Healthy')) {
+    return {
+      state: 'Needs Attention',
+      reason: 'Some checks couldn’t be measured, so the overall picture is incomplete.',
+    };
+  }
+
+  return { state: band, reason: null };
 }
 
 // ── Deterministic explanations ──────────────────────────

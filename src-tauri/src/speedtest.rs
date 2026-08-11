@@ -20,13 +20,23 @@ const UPLOAD_BYTES: usize = 25 * 1024 * 1024;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
+/// RAII single-flight guard: clears RUNNING even if run_inner panics (F5), so
+/// a failed test can never permanently wedge the feature.
+struct RunningGuard;
+impl Drop for RunningGuard {
+    fn drop(&mut self) {
+        RUNNING.store(false, Ordering::SeqCst);
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeedTestResult {
     pub id: i64,
     pub ts: String,
     pub down_mbps: f64,
-    pub up_mbps: f64,
+    /// None when the upload leg didn't complete — never 0.0 as a sentinel.
+    pub up_mbps: Option<f64>,
     pub ping_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
 }
@@ -35,14 +45,16 @@ pub fn run() -> Result<SpeedTestResult, String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err("a speed test is already running".into());
     }
-    let result = run_inner();
-    RUNNING.store(false, Ordering::SeqCst);
-    result
+    let _guard = RunningGuard;
+    run_inner()
 }
 
 fn run_inner() -> Result<SpeedTestResult, String> {
+    // redirect::none (F6): enforces "only ever speed.cloudflare.com" — a
+    // redirect can't quietly send the test, or its error text, elsewhere.
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| format!("http client: {e}"))?;
 
@@ -57,6 +69,12 @@ fn run_inner() -> Result<SpeedTestResult, String> {
         .map_err(|e| format!("download failed to start: {e}"))?
         .error_for_status()
         .map_err(|e| format!("download rejected: {e}"))?;
+    // error_for_status only rejects 4xx/5xx. With redirects disabled a 3xx
+    // would otherwise read as an empty body and be recorded as a real 0 Mbps
+    // result, which WOULD pollute the baseline averages (N3).
+    if !resp.status().is_success() {
+        return Err(format!("download endpoint returned {}", resp.status()));
+    }
     let mut buf = vec![0u8; 256 * 1024];
     let mut received: u64 = 0;
     let started = Instant::now();
@@ -77,21 +95,31 @@ fn run_inner() -> Result<SpeedTestResult, String> {
             }
         }
     }
+    if received == 0 {
+        return Err("download produced no data".into());
+    }
     let down_secs = started.elapsed().as_secs_f64().max(0.1);
     let down_mbps = (received as f64 * 8.0) / down_secs / 1e6;
 
-    // Upload: POST a fixed buffer of zeros, timed.
+    // Upload: POST a fixed buffer of zeros, timed. On a slow uplink this can
+    // time out — but the download already succeeded, so we keep it and report
+    // upload as unmeasured (None, stored as SQL NULL) rather than failing the
+    // whole test (F7). None, never 0.0: "not measured" and "zero" are
+    // different facts, consistent with the rest of the codebase (N4).
     let payload = vec![0u8; UPLOAD_BYTES];
     let started = Instant::now();
-    client
+    let up_mbps: Option<f64> = match client
         .post(UP_URL)
         .body(payload)
         .send()
-        .map_err(|e| format!("upload failed: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("upload rejected: {e}"))?;
-    let up_secs = started.elapsed().as_secs_f64().max(0.1);
-    let up_mbps = (UPLOAD_BYTES as f64 * 8.0) / up_secs / 1e6;
+        .and_then(|r| r.error_for_status())
+    {
+        Ok(r) if r.status().is_success() => {
+            let up_secs = started.elapsed().as_secs_f64().max(0.1);
+            Some((UPLOAD_BYTES as f64 * 8.0) / up_secs / 1e6)
+        }
+        _ => None,
+    };
 
     let ts = chrono::Utc::now().to_rfc3339();
     let id = timeline::save_speedtest(&ts, down_mbps, up_mbps, ping_ms, jitter_ms)?;
@@ -101,7 +129,7 @@ fn run_inner() -> Result<SpeedTestResult, String> {
         id,
         ts,
         down_mbps: round1(down_mbps),
-        up_mbps: round1(up_mbps),
+        up_mbps: up_mbps.map(round1),
         ping_ms: ping_ms.map(round1),
         jitter_ms: jitter_ms.map(round1),
     })

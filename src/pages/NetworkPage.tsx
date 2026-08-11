@@ -179,7 +179,11 @@ export function NetworkPage() {
                 </div>
                 <div>
                   <div className="faint small">Upload</div>
-                  <div style={{ fontSize: 28, fontWeight: 700 }} className="mono">{latest.upMbps.toFixed(0)} <span className="small faint">Mbps</span></div>
+                  {/* null = the upload leg didn't complete (e.g. a slow uplink
+                      hit the timeout) — report unmeasured, never a fake zero. */}
+                  <div style={{ fontSize: 28, fontWeight: 700 }} className="mono">
+                    {latest.upMbps !== null ? latest.upMbps.toFixed(0) : '–'} <span className="small faint">Mbps</span>
+                  </div>
                 </div>
                 <div>
                   <div className="faint small">Ping</div>
@@ -212,7 +216,7 @@ export function NetworkPage() {
                   <tr key={r.id}>
                     <td>{relativeTime(r.ts)}</td>
                     <td className="num mono">{r.downMbps.toFixed(0)}</td>
-                    <td className="num mono">{r.upMbps.toFixed(0)}</td>
+                    <td className="num mono">{r.upMbps !== null ? r.upMbps.toFixed(0) : '–'}</td>
                     <td className="num mono">{r.pingMs !== null ? r.pingMs.toFixed(0) : '–'}</td>
                   </tr>
                 ))}

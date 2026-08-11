@@ -25,9 +25,13 @@ fn system_powershell() -> PathBuf {
 ///   executed. This is a review convention backed by the type system, not an
 ///   absolute guarantee (leaked Strings could satisfy it) — never widen the
 ///   signature and never pass anything but a `const` script.
-/// - Scripts must not contain double-quote characters: powershell.exe
-///   re-parses its raw command line, and embedded `"` would collide with the
-///   quoting std applies to the argument. Use single quotes in scripts.
+/// - Scripts must not contain BARE double-quote characters: powershell.exe
+///   re-parses its raw command line, and an unescaped `"` would collide with
+///   the quoting std applies to the argument. Use single quotes; when a
+///   literal double-quote is genuinely needed (e.g. matching a quoted path in
+///   startup.rs), build it with `$q = [char]34` rather than embedding `"`.
+///   A backslash-escaped `\"` inside a single-quoted PS string does round-trip
+///   correctly through std's arg quoting, but that is subtle — prefer [char]34.
 /// - Every script must begin by pinning $env:PSModulePath to admin-writable
 ///   locations (see the collectors) so module autoloading cannot be hijacked
 ///   from the user-writable Documents module path.

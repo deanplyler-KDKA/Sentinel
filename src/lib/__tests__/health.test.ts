@@ -79,6 +79,47 @@ describe('computeOverall', () => {
   it('reports Checking before data arrives', () => {
     expect(computeOverall(null, null, null, null).state).toBe('Checking');
   });
+
+  it('caps a green headline when any check is unmeasured', () => {
+    const snap = { ...mockSnapshot(), firewall: null };
+    const security = computeScore(snap);
+    const pc = computePcHealth(mockPerfOverview(), mockHardware(), snap);
+    const net = computeNetworkHealth(snap, probe, []);
+    const overall = computeOverall(security, pc, net, snap);
+    expect(overall.state).toBe('Needs Attention');
+    expect(overall.reason).toContain('couldn’t be measured');
+  });
+
+  it('an unmeasured check never SOFTENS a genuinely bad state', () => {
+    // Security in poor shape (no override triggered) plus an unknown network
+    // check: the headline must stay at the worse of the two, not be downgraded
+    // to amber by the incomplete-data path.
+    const snap = mockSnapshot();
+    snap.defender!.tamperProtection = false;
+    snap.defender!.cloudProtection = false;
+    snap.defender!.controlledFolderAccess = false;
+    snap.defender!.signatureAgeDays = 40;
+    snap.system!.secureBoot = false;
+    snap.system!.bitlocker = 'off';
+    snap.system!.rebootRequired = true;
+    const security = computeScore(snap);
+    const pc = computePcHealth(mockPerfOverview(), mockHardware(), snap);
+    const net = computeNetworkHealth(snap, null, []); // null probe ⇒ unknowns
+    const overall = computeOverall(security, pc, net, snap);
+    expect(overall.state).toBe('Action Recommended');
+  });
+
+  it('does not treat deliberately unscored factors as unmeasured', () => {
+    // A battery that cannot report wear data is points:0 / unknown — it must
+    // not pin the headline off green forever.
+    const hw = mockHardware();
+    hw.battery = { status: 2, chargePct: 100, healthPct: null };
+    const snap = mockSnapshot();
+    const security = computeScore(snap);
+    const pc = computePcHealth(mockPerfOverview(), hw, snap);
+    const net = computeNetworkHealth(snap, probe, mockSpeedTests().map((r) => ({ ...r, downMbps: 800 })));
+    expect(computeOverall(security, pc, net, snap).state).toBe('Excellent');
+  });
 });
 
 describe('explain', () => {

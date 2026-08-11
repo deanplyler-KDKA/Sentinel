@@ -4,6 +4,7 @@
 //! resolution timing. Honest naming: "connection latency", not "ping".
 
 use std::net::{SocketAddr, TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -11,6 +12,17 @@ use serde::Serialize;
 const TARGETS: [&str; 2] = ["1.1.1.1:443", "8.8.8.8:443"];
 const ATTEMPTS: usize = 6; // first is a warmup and discarded
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Backend single-flight (F11): a hostile WebView can't fan out concurrent
+/// probes; the frontend ref-guard is convenience, this is the real bound.
+static RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct RunningGuard;
+impl Drop for RunningGuard {
+    fn drop(&mut self) {
+        RUNNING.store(false, Ordering::SeqCst);
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,6 +40,11 @@ pub struct NetProbe {
 }
 
 pub fn probe() -> Result<NetProbe, String> {
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("a connection probe is already running".into());
+    }
+    let _guard = RunningGuard;
+
     let mut chosen_target = TARGETS[0];
     let mut samples: Vec<f64> = Vec::new();
     let mut failures = 0usize;

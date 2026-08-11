@@ -103,12 +103,10 @@ pub fn get_perf_series() -> Vec<perf::PerfPoint> {
 }
 
 #[tauri::command]
-pub fn get_hardware_info() -> Result<hardware::HardwareInfo, String> {
-    tauri::async_runtime::block_on(async {
-        tauri::async_runtime::spawn_blocking(|| diag::track("hardware", hardware::collect))
-            .await
-            .map_err(|e| format!("task failed: {e}"))?
-    })
+pub async fn get_hardware_info() -> Result<hardware::HardwareInfo, String> {
+    tauri::async_runtime::spawn_blocking(|| diag::track("hardware", hardware::collect))
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
 }
 
 #[tauri::command]

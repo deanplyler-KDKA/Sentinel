@@ -51,6 +51,10 @@ pub struct HardwareInfo {
 
 // Read-only CIM/Storage queries. Battery health tries root\wmi capacity
 // classes and fails closed to null (verified unsupported on some firmware).
+// Per-query -ErrorAction SilentlyContinue is deliberate (F10): a missing
+// battery (desktop) or GPU class is legitimate absence, not an error — each
+// section independently degrades to empty/null. The UI renders those as
+// "Unavailable", never as fabricated healthy hardware.
 // The PSModulePath pin must stay the first statement — see powershell.rs.
 const SCRIPT: &str = r#"
 $env:PSModulePath = [Environment]::GetFolderPath('System') + '\WindowsPowerShell\v1.0\Modules;' + [Environment]::GetFolderPath('ProgramFiles') + '\WindowsPowerShell\Modules';

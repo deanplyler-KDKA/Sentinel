@@ -209,7 +209,8 @@ export interface SpeedTestRow {
   id: number;
   ts: string;
   downMbps: number;
-  upMbps: number;
+  /** null when the upload leg didn't complete — never 0 as a sentinel. */
+  upMbps: number | null;
   pingMs: number | null;
   jitterMs: number | null;
 }
