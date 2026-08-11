@@ -25,6 +25,32 @@ export function uptimeSince(bootIso: string): string {
   return `${mins} min`;
 }
 
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes.toFixed(0)} B`;
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} GB`.replace(' GB', ' MB');
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+}
+
+export function formatBps(bps: number): string {
+  const bits = bps * 8;
+  if (bits < 1e6) return `${(bits / 1e3).toFixed(0)} Kbps`;
+  if (bits < 1e9) return `${(bits / 1e6).toFixed(1)} Mbps`;
+  return `${(bits / 1e9).toFixed(2)} Gbps`;
+}
+
+export function formatGb(gb: number): string {
+  return gb >= 1000 ? `${(gb / 1000).toFixed(2)} TB` : `${gb.toFixed(0)} GB`;
+}
+
+export function formatUptime(secs: number): string {
+  const days = Math.floor(secs / 86_400);
+  const hrs = Math.floor((secs % 86_400) / 3600);
+  if (days > 0) return `${days} day${days === 1 ? '' : 's'}, ${hrs} hr`;
+  const mins = Math.floor((secs % 3600) / 60);
+  return hrs > 0 ? `${hrs} hr ${mins} min` : `${mins} min`;
+}
+
 export function timeOfDay(iso: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);

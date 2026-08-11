@@ -1,6 +1,27 @@
 import { invoke } from '@tauri-apps/api/core';
-import type { SecuritySnapshot, TimelineEvent } from '../types/security';
-import { mockSnapshot, mockTimeline } from './mock';
+import type {
+  CollectorStatus,
+  HardwareInfo,
+  NetProbe,
+  NetworkDetail,
+  PerfOverview,
+  PerfPoint,
+  SecuritySnapshot,
+  SpeedTestRow,
+  StartupApp,
+  TimelineEvent,
+} from '../types/security';
+import {
+  mockHardware,
+  mockNetworkDetail,
+  mockPerfOverview,
+  mockPerfSeries,
+  mockProbe,
+  mockSnapshot,
+  mockSpeedTests,
+  mockStartupApps,
+  mockTimeline,
+} from './mock';
 
 /** True when running inside the Tauri shell (vs. a plain browser tab). */
 export const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
@@ -45,4 +66,56 @@ export async function getTimeline(): Promise<TimelineEvent[]> {
     return mockTimeline();
   }
   return invoke<TimelineEvent[]>('get_timeline');
+}
+
+/** Null for the first ~2s after launch while the sampler warms up. */
+export async function getPerfOverview(): Promise<PerfOverview | null> {
+  if (!isTauri) return mockPerfOverview();
+  return invoke<PerfOverview | null>('get_perf_overview');
+}
+
+export async function getPerfSeries(): Promise<PerfPoint[]> {
+  if (!isTauri) return mockPerfSeries();
+  return invoke<PerfPoint[]>('get_perf_series');
+}
+
+export async function getHardwareInfo(): Promise<HardwareInfo> {
+  if (!isTauri) return mockHardware();
+  return invoke<HardwareInfo>('get_hardware_info');
+}
+
+export async function getNetworkDetail(): Promise<NetworkDetail> {
+  if (!isTauri) return mockNetworkDetail();
+  return invoke<NetworkDetail>('get_network_detail');
+}
+
+export async function runNetProbe(): Promise<NetProbe> {
+  if (!isTauri) {
+    await new Promise((r) => setTimeout(r, 900));
+    return mockProbe();
+  }
+  return invoke<NetProbe>('run_net_probe');
+}
+
+export async function runSpeedTest(): Promise<SpeedTestRow> {
+  if (!isTauri) {
+    await new Promise((r) => setTimeout(r, 3000));
+    return mockSpeedTests()[0];
+  }
+  return invoke<SpeedTestRow>('run_speed_test');
+}
+
+export async function getSpeedTestHistory(): Promise<SpeedTestRow[]> {
+  if (!isTauri) return mockSpeedTests();
+  return invoke<SpeedTestRow[]>('get_speedtest_history');
+}
+
+export async function getStartupApps(): Promise<StartupApp[]> {
+  if (!isTauri) return mockStartupApps();
+  return invoke<StartupApp[]>('get_startup_apps');
+}
+
+export async function getDiagnostics(): Promise<CollectorStatus[]> {
+  if (!isTauri) return [];
+  return invoke<CollectorStatus[]>('get_diagnostics');
 }

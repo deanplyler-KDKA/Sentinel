@@ -14,11 +14,18 @@
    equivalents (registry state key, Shell COM property), which Sentinel uses instead.
    Sentinel must never ask for elevation in order to *collect* information, and must never
    weaken any Windows security setting for any reason.
-3. **No arbitrary command execution.** The IPC surface is five zero-argument Tauri
-   commands (`get_security_snapshot`, `get_app_info`, `export_diagnostics`,
-   `reset_app_data`, `get_timeline`) — none accepts any input from the WebView.
-   Timeline SQL lives entirely in `timeline.rs` as fixed statements with bound
-   parameters; the WebView cannot express a query. PowerShell scripts are compile-time constants; the runner
+3. **No arbitrary command execution.** The IPC surface is fourteen zero-argument Tauri
+   commands (security snapshot, timeline, perf overview/series, hardware, network
+   detail, net probe, speed test, speed history, startup apps, diagnostics, app info,
+   export, reset) — none accepts any input from the WebView. All SQL lives in
+   `timeline.rs` as fixed statements with bound parameters; the WebView cannot express
+   a query, a path, a hostname, or a script.
+4. **Network communication is a single, fixed, user-initiated path.** Only
+   `speedtest.rs` talks to the internet, only to hard-coded Cloudflare speed endpoints,
+   only when the user clicks the button, guarded against concurrent runs. The
+   connection-quality probe opens TCP connections to two hard-coded anycast resolvers.
+   No URL, hostname, or address anywhere in the app is runtime-constructed from
+   external input. PowerShell scripts are compile-time constants; the runner
    (`src-tauri/src/powershell.rs`) accepts only `&'static str`. Note this lifetime bound
    is a review convention backed by the type system, not an absolute proof — a leaked
    `String` could satisfy it — so the enforced rule is: only `const` script items are ever

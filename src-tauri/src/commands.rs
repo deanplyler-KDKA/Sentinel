@@ -1,5 +1,6 @@
-use crate::models::{CollectorError, SecuritySnapshot, TimelineEvent};
-use crate::{appdata, defender, firewall, network, nord, timeline, windows};
+use crate::models::{CollectorError, SecuritySnapshot, SpeedTestRow, TimelineEvent};
+use crate::{appdata, defender, diag, firewall, hardware, netinfo, netprobe, network, nord,
+    perf, speedtest, startup, timeline, windows};
 use serde::Serialize;
 
 /// The only IPC command in Phase 1. Zero arguments by design — the frontend
@@ -26,11 +27,11 @@ fn collect_snapshot() -> SecuritySnapshot {
     // Collectors are independent; run them in parallel so a snapshot takes
     // about as long as the slowest single PowerShell call.
     let (defender, firewall, system, network, vpn) = std::thread::scope(|s| {
-        let d = s.spawn(defender::collect);
-        let f = s.spawn(firewall::collect);
-        let sys = s.spawn(windows::collect);
-        let n = s.spawn(network::collect);
-        let v = s.spawn(nord::collect);
+        let d = s.spawn(|| diag::track("security/defender", defender::collect));
+        let f = s.spawn(|| diag::track("security/firewall", firewall::collect));
+        let sys = s.spawn(|| diag::track("security/system", windows::collect));
+        let n = s.spawn(|| diag::track("security/network", network::collect));
+        let v = s.spawn(|| diag::track("security/vpn", nord::collect));
         (
             d.join().unwrap_or_else(|_| Err("defender collector panicked".into())),
             f.join().unwrap_or_else(|_| Err("firewall collector panicked".into())),
@@ -82,6 +83,73 @@ fn collect_snapshot() -> SecuritySnapshot {
 #[tauri::command]
 pub fn get_timeline() -> Result<Vec<TimelineEvent>, String> {
     timeline::list()
+}
+
+// ── Performance / hardware / network intelligence ────────────────────────
+// Every command below is zero-argument (docs/SECURITY.md): the WebView can
+// only ask for a whole, predefined dataset.
+
+/// Latest full performance snapshot from the in-memory sampler. `null` for
+/// the first ~2 seconds after launch — UI renders "Checking".
+#[tauri::command]
+pub fn get_perf_overview() -> Option<perf::PerfOverview> {
+    perf::get_overview()
+}
+
+/// Rolling ~6-minute window of 2-second samples for the live charts.
+#[tauri::command]
+pub fn get_perf_series() -> Vec<perf::PerfPoint> {
+    perf::get_series()
+}
+
+#[tauri::command]
+pub fn get_hardware_info() -> Result<hardware::HardwareInfo, String> {
+    tauri::async_runtime::block_on(async {
+        tauri::async_runtime::spawn_blocking(|| diag::track("hardware", hardware::collect))
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
+    })
+}
+
+#[tauri::command]
+pub async fn get_network_detail() -> Result<netinfo::NetworkDetail, String> {
+    tauri::async_runtime::spawn_blocking(|| diag::track("network/detail", netinfo::collect))
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
+}
+
+/// Active connection-quality probe (TCP latency/jitter/loss + DNS timing).
+#[tauri::command]
+pub async fn run_net_probe() -> Result<netprobe::NetProbe, String> {
+    tauri::async_runtime::spawn_blocking(|| diag::track("network/probe", netprobe::probe))
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
+}
+
+/// User-initiated internet speed test (the app's only network communication).
+#[tauri::command]
+pub async fn run_speed_test() -> Result<speedtest::SpeedTestResult, String> {
+    tauri::async_runtime::spawn_blocking(|| diag::track("network/speedtest", speedtest::run))
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
+}
+
+#[tauri::command]
+pub fn get_speedtest_history() -> Result<Vec<SpeedTestRow>, String> {
+    timeline::list_speedtests()
+}
+
+#[tauri::command]
+pub async fn get_startup_apps() -> Result<Vec<startup::StartupApp>, String> {
+    tauri::async_runtime::spawn_blocking(|| diag::track("startup-apps", startup::collect))
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
+}
+
+/// Collector health for the developer diagnostics area.
+#[tauri::command]
+pub fn get_diagnostics() -> Vec<diag::CollectorStatus> {
+    diag::all()
 }
 
 #[derive(Debug, Clone, Serialize)]

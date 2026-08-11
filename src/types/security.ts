@@ -102,3 +102,134 @@ export interface SecuritySnapshot {
   vpn: VpnStatus | null;
   errors: CollectorError[];
 }
+
+// ── Performance ─────────────────────────────────────────
+
+export interface PerfPoint {
+  tsMs: number;
+  cpuPct: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  rxBps: number;
+  txBps: number;
+  diskReadBps: number;
+  diskWriteBps: number;
+}
+
+export interface ProcInfo {
+  name: string;
+  cpuPct: number;
+  memMb: number;
+  diskBps: number;
+}
+
+export interface DiskSpace {
+  mount: string;
+  totalGb: number;
+  freeGb: number;
+  kind: string;
+}
+
+export interface PerfOverview {
+  sampledAt: string;
+  cpuModel: string;
+  logicalCores: number;
+  cpuFreqMhz: number;
+  cpuPct: number;
+  perCorePct: number[];
+  memTotalMb: number;
+  memUsedMb: number;
+  memAvailableMb: number;
+  uptimeSecs: number;
+  processCount: number;
+  disks: DiskSpace[];
+  topCpu: ProcInfo[];
+  topMem: ProcInfo[];
+  topDisk: ProcInfo[];
+}
+
+// ── Hardware ────────────────────────────────────────────
+
+export interface GpuInfo {
+  name: string;
+  driver: string;
+  vramMb: number | null;
+}
+
+export interface BatteryInfo {
+  status: number;
+  chargePct: number | null;
+  healthPct: number | null;
+}
+
+export interface PhysicalDiskInfo {
+  model: string;
+  media: string;
+  health: string;
+  bus: string;
+  sizeGb: number;
+}
+
+export interface HardwareInfo {
+  gpus: GpuInfo[];
+  battery: BatteryInfo | null;
+  physicalDisks: PhysicalDiskInfo[];
+}
+
+// ── Network intelligence ────────────────────────────────
+
+export interface AdapterInfo {
+  name: string;
+  description: string;
+  linkSpeed: string;
+  wifi: boolean;
+}
+
+export interface IpConfigInfo {
+  interface: string;
+  gateway: string;
+  ipv4: string | null;
+  ipv6: boolean;
+}
+
+export interface NetworkDetail {
+  adapters: AdapterInfo[];
+  configs: IpConfigInfo[];
+}
+
+export interface NetProbe {
+  latencyMs: number | null;
+  jitterMs: number | null;
+  lossPct: number;
+  dnsMs: number | null;
+  target: string;
+}
+
+export interface SpeedTestRow {
+  id: number;
+  ts: string;
+  downMbps: number;
+  upMbps: number;
+  pingMs: number | null;
+  jitterMs: number | null;
+}
+
+// ── Startup & diagnostics ───────────────────────────────
+
+export interface StartupApp {
+  name: string;
+  command: string;
+  location: string;
+  publisher: string | null;
+  enabled: boolean;
+}
+
+export interface CollectorStatus {
+  name: string;
+  lastSuccess: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  lastDurationMs: number | null;
+  runs: number;
+  failures: number;
+}

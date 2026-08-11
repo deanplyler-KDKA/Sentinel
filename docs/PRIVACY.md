@@ -2,10 +2,15 @@
 
 Sentinel is a local application. In plain terms:
 
-- **Nothing leaves your PC.** Sentinel makes no network connections of its own — no
-  telemetry, no analytics, no crash reporting services, no update checks, no accounts.
-  The app's Content-Security-Policy and its lack of any HTTP capability enforce this at
-  the platform level, not just as policy.
+- **Nothing leaves your PC**, with one explicit, user-initiated exception. Sentinel makes
+  no network connections of its own — no telemetry, no analytics, no crash reporting
+  services, no update checks, no accounts. The single exception is the **internet speed
+  test**: when *you* click "Run speed test", Sentinel downloads throwaway data from and
+  uploads meaningless zero-bytes to Cloudflare's public speed service
+  (speed.cloudflare.com). No personal data is sent, nothing identifies you beyond an
+  ordinary HTTPS request, results are stored only on this PC, and it never runs
+  automatically. The WebView still has no network capability at all — the test runs in
+  the Rust backend.
 - **What Sentinel reads:** the status of Windows security features (Defender, Firewall,
   Secure Boot, BitLocker, Windows Update), network configuration (connection profiles,
   DNS servers, DoH state), and whether NordVPN is installed/running/connected. All of it

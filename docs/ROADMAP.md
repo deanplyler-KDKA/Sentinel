@@ -38,11 +38,32 @@ Everything below is collected without admin rights and without modifying anythin
 - ✅ 5000-event retention, day-grouped Timeline panel, no cloud/account/telemetry
 - Remaining: score-change events (needs backend scoring), richer filtering/search
 
-## Phase 5 — Network dashboard
+## Phase 5 — System intelligence expansion (shipped in 0.3.0)
 
-- Per-app active connections (`Get-NetTCPConnection` + process mapping)
-- Public IP / protocol display for VPN
-- "Which programs are talking to the internet"
+- ✅ Eight-section navigation (Dashboard, Protect, Performance, Network, Health,
+  Devices, History, Settings) on centralized design tokens with a light theme
+- ✅ Live performance monitoring (Rust-native sysinfo sampler: CPU, memory, disk
+  activity, network rates, top processes) with restrained in-memory charts
+- ✅ Hardware facts: GPU, battery, physical disk SMART health
+- ✅ Network intelligence: adapter/link detail, TCP latency/jitter/loss probe,
+  user-initiated Cloudflare speed test with local history and baseline comparisons
+- ✅ PC Health / Network Health / Overall scoring with severity overrides and
+  unsupported-capability exclusion; deterministic plain-language explanations
+- ✅ Startup apps (read-only), collector diagnostics area, Pressure Test report
+- ✅ System tray (open / refresh / quit)
+
+## Phase 5.1 — Next (not yet implemented)
+
+- Tray: optional start-with-Windows (autostart plugin) and close-to-tray background
+  monitoring, both user-controlled and off by default
+- Calm notifications on meaningful changes (protection off, disk critically low,
+  restart pending, speed below baseline) with deduplication — requires the
+  notification plugin + capability review
+- Scheduled speed tests (opt-in), score-change timeline events, history retention
+  options, per-app network attribution (needs elevated ETW — may stay out)
+- Wi-Fi signal quality (WlanQueryInterface), pending-updates count via WUA COM
+
+## Phase 6 — Per-app connections & household dashboard
 
 ## Phase 6 — Household dashboard
 

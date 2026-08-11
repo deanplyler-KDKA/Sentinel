@@ -153,6 +153,17 @@ pub struct TimelineEvent {
     pub after_gap: bool,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SpeedTestRow {
+    pub id: i64,
+    pub ts: String,
+    pub down_mbps: f64,
+    pub up_mbps: f64,
+    pub ping_ms: Option<f64>,
+    pub jitter_ms: Option<f64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VpnStatus {

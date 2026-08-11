@@ -3,6 +3,46 @@ use tauri::Manager;
 mod appdata;
 mod commands;
 
+/// System tray: open, refresh, quit. Start-with-Windows and background
+/// monitoring are deliberately not implemented yet (user-controlled opt-ins,
+/// planned with the notifications work — see ROADMAP.md).
+fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder};
+    use tauri::tray::TrayIconBuilder;
+    use tauri::Emitter;
+
+    let open = MenuItemBuilder::with_id("open", "Open Sentinel").build(app)?;
+    let refresh = MenuItemBuilder::with_id("refresh", "Refresh status").build(app)?;
+    let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+    let menu = MenuBuilder::new(app).items(&[&open, &refresh, &quit]).build()?;
+
+    let mut tray = TrayIconBuilder::new()
+        .menu(&menu)
+        .tooltip("Sentinel — Personal Security Center")
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            "open" => show_main_window(app),
+            "refresh" => {
+                show_main_window(app);
+                let _ = app.emit("tray-refresh", ());
+            }
+            "quit" => app.exit(0),
+            _ => {}
+        });
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+    tray.build(app)?;
+    Ok(())
+}
+
+fn show_main_window(app: &tauri::AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+    }
+}
+
 /// The configured 1100x600 default is small enough to fit even short scaled
 /// displays (e.g. an ultrawide at 200% with a ~670px-tall logical work area),
 /// so Windows never force-maximizes the window at creation — restoring a
@@ -26,11 +66,18 @@ fn fit_window_to_monitor(app: &tauri::AppHandle) {
     let _ = win.center();
 }
 mod defender;
+mod diag;
 mod firewall;
+mod hardware;
 mod models;
+mod netinfo;
+mod netprobe;
 mod network;
 mod nord;
+mod perf;
 mod powershell;
+mod speedtest;
+mod startup;
 mod timeline;
 mod windows;
 
@@ -49,6 +96,10 @@ pub fn run() {
                 }
             }
             fit_window_to_monitor(app.handle());
+            perf::start_sampler();
+            if let Err(e) = setup_tray(app.handle()) {
+                appdata::log(&format!("tray setup failed: {e}"));
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -56,7 +107,16 @@ pub fn run() {
             commands::get_app_info,
             commands::export_diagnostics,
             commands::reset_app_data,
-            commands::get_timeline
+            commands::get_timeline,
+            commands::get_perf_overview,
+            commands::get_perf_series,
+            commands::get_hardware_info,
+            commands::get_network_detail,
+            commands::run_net_probe,
+            commands::run_speed_test,
+            commands::get_speedtest_history,
+            commands::get_startup_apps,
+            commands::get_diagnostics
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

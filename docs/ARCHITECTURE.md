@@ -15,6 +15,29 @@ Windows                            Defender, Firewall, Secure Boot, BitLocker,
                                    Windows Update, network stack, NordVPN
 ```
 
+## Platform abstraction (0.3.0)
+
+The frontend is platform-neutral: pages consume typed data through
+`src/lib/api.ts` (the Windows provider, backed by zero-argument IPC commands) and
+capability-based rendering — anything a platform can't provide renders as
+Unsupported/Unavailable rather than being assumed. A future macOS backend
+implements the same command surface (FileVault ↔ BitLocker, Gatekeeper/SIP ↔
+Secure Boot, macOS firewall ↔ Windows Firewall, Software Update ↔ Windows
+Update, Apple Silicon sensors ↔ sysinfo) without touching the shared UI. The
+Rust side is already modular per domain; a macOS build swaps the collector
+modules behind the same `commands.rs` signatures.
+
+Subsystems added in 0.3.0:
+
+- `perf.rs` — Rust-native sampler (sysinfo), 2 s cadence, in-memory ring buffer
+- `hardware.rs` — GPU / battery / physical-disk health (PowerShell, 10 min cache)
+- `netinfo.rs` / `netprobe.rs` — adapter detail; TCP latency/jitter/loss probe
+- `speedtest.rs` — user-initiated Cloudflare speed test (the app's only internet path)
+- `startup.rs` — read-only startup apps
+- `diag.rs` — collector status registry for the diagnostics area
+- Frontend: design-token system with light theme, eight-page navigation,
+  scoring engines (`score.ts`, `health.ts`), deterministic explanations
+
 ## Process model
 
 - The frontend calls exactly one Tauri command in Phase 1: `get_security_snapshot`.

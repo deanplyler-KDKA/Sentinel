@@ -18,8 +18,9 @@ use serde::{Deserialize, Serialize};
 use crate::appdata;
 use crate::models::{SecuritySnapshot, TimelineEvent};
 
-/// Bump together with a migration branch in `init` when the schema changes.
-const SCHEMA_VERSION: i64 = 1;
+/// Bump together with a migration branch in `ensure_schema` when the schema
+/// changes. v2 added the speedtests table.
+const SCHEMA_VERSION: i64 = 2;
 const MAX_EVENTS: i64 = 5000;
 const LIST_LIMIT: i64 = 300;
 
@@ -55,9 +56,31 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
-            PRAGMA user_version = 1;",
+            CREATE TABLE IF NOT EXISTS speedtests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                down_mbps REAL NOT NULL,
+                up_mbps REAL NOT NULL,
+                ping_ms REAL,
+                jitter_ms REAL
+            );
+            PRAGMA user_version = 2;",
         )
         .map_err(|e| format!("create schema: {e}"))?;
+    } else if version == 1 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS speedtests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL,
+                down_mbps REAL NOT NULL,
+                up_mbps REAL NOT NULL,
+                ping_ms REAL,
+                jitter_ms REAL
+            );
+            PRAGMA user_version = 2;",
+        )
+        .map_err(|e| format!("migrate schema v1->v2: {e}"))?;
+        appdata::log("timeline schema migrated v1 -> v2 (speedtests)");
     } else if version > SCHEMA_VERSION {
         // A newer Sentinel wrote this database; read-compatible or not, do not
         // modify its schema. Recording may fail and will be logged.
@@ -372,6 +395,64 @@ pub fn clear() {
     let Ok(conn) = db.lock() else { return };
     let _ = conn.execute("DELETE FROM events", []);
     let _ = conn.execute("DELETE FROM state", []);
+    let _ = conn.execute("DELETE FROM speedtests", []);
+}
+
+/// Persists a completed, user-initiated speed test. Returns the row id.
+pub fn save_speedtest(
+    ts: &str,
+    down_mbps: f64,
+    up_mbps: f64,
+    ping_ms: Option<f64>,
+    jitter_ms: Option<f64>,
+) -> Result<i64, String> {
+    let Some(db) = DB.get() else { return Err("timeline unavailable".into()) };
+    let conn = db.lock().map_err(|_| "timeline lock poisoned".to_string())?;
+    conn.execute(
+        "INSERT INTO speedtests(ts, down_mbps, up_mbps, ping_ms, jitter_ms)
+         VALUES(?1, ?2, ?3, ?4, ?5)",
+        params![ts, down_mbps, up_mbps, ping_ms, jitter_ms],
+    )
+    .map_err(|e| format!("save speed test: {e}"))?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn record_speedtest_event(down_mbps: f64, up_mbps: f64) {
+    let Some(db) = DB.get() else { return };
+    let Ok(conn) = db.lock() else { return };
+    let events = vec![NewEvent {
+        category: "network",
+        kind: "speed-test",
+        severity: "info",
+        message: "Speed test completed".into(),
+        detail: Some(format!("{:.0} Mbps down / {:.0} Mbps up", down_mbps, up_mbps)),
+    }];
+    let _ = insert_events(&conn, &events, false);
+}
+
+pub fn list_speedtests() -> Result<Vec<crate::models::SpeedTestRow>, String> {
+    let Some(db) = DB.get() else { return Ok(Vec::new()) };
+    let conn = db.lock().map_err(|_| "timeline lock poisoned".to_string())?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, ts, down_mbps, up_mbps, ping_ms, jitter_ms
+             FROM speedtests ORDER BY id DESC LIMIT 200",
+        )
+        .map_err(|e| format!("prepare speedtests: {e}"))?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok(crate::models::SpeedTestRow {
+                id: r.get(0)?,
+                ts: r.get(1)?,
+                down_mbps: r.get(2)?,
+                up_mbps: r.get(3)?,
+                ping_ms: r.get(4)?,
+                jitter_ms: r.get(5)?,
+            })
+        })
+        .map_err(|e| format!("query speedtests: {e}"))?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|e| format!("read speedtests: {e}"))
 }
 
 pub fn list() -> Result<Vec<TimelineEvent>, String> {
@@ -491,8 +572,46 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].message, "NordVPN connected");
         assert!(listed[0].after_gap);
-        // schema version was stamped
+        // schema version was stamped to the current version
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, 1);
+        assert_eq!(v, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn speedtest_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        ensure_schema(&conn).unwrap();
+        conn.execute(
+            "INSERT INTO speedtests(ts, down_mbps, up_mbps, ping_ms, jitter_ms)
+             VALUES('2026-08-10T00:00:00Z', 418.2, 41.5, 19.2, 2.4)",
+            [],
+        )
+        .unwrap();
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM speedtests", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn schema_migrates_v1_to_v2() {
+        let conn = Connection::open_in_memory().unwrap();
+        // Simulate a v1 database: events + state, user_version = 1, no speedtests.
+        conn.execute_batch(
+            "CREATE TABLE events(id INTEGER PRIMARY KEY, ts TEXT, category TEXT, kind TEXT,
+                severity TEXT, message TEXT, detail TEXT, after_gap INTEGER);
+             CREATE TABLE state(key TEXT PRIMARY KEY, value TEXT);
+             PRAGMA user_version = 1;",
+        )
+        .unwrap();
+        ensure_schema(&conn).unwrap();
+        let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(v, 2);
+        // speedtests table now exists and is usable
+        conn.execute(
+            "INSERT INTO speedtests(ts, down_mbps, up_mbps) VALUES('t', 1.0, 2.0)",
+            [],
+        )
+        .unwrap();
     }
 }
