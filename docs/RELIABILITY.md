@@ -46,8 +46,30 @@ Every data collector in Sentinel obeys the same rules:
 | Perf sampler | panic / spawn failure | separate thread; heartbeat shows failure in diagnostics |
 | Timeline DB | corruption / lock | best-effort writes, logged errors, app runs without history |
 | Speed test | network failure | single-flight guard, typed error to UI, nothing stored |
+| Speed test | endpoint contract change | `#[ignore]`d live tests assert the endpoints accept the configured chunk sizes |
 | Frontend page | render exception | React error boundary crash screen |
 | Backend panic | any | panic hook logs message + backtrace before exit |
+
+## Third-party endpoint constraints (speed test)
+
+Cloudflare's `__down` rejects sizes at or above roughly 100 MB with **403**, so the
+test cannot simply request one large body. It also cannot request a *small* body and
+call it a measurement: 50 MB completes in well under a second on a fast link, which is
+too short to be meaningful. Both directions therefore loop fixed chunks (50 MB down,
+8 MB up) until an 8-second window elapses, and report total bytes over measured time.
+
+This was learned the hard way: the feature originally shipped requesting 200 MB and
+failed **100% of the time** with a 403, and no automated test caught it because the
+suite deliberately avoids the network. The guard is now two `#[ignore]`d tests that
+must be run by hand whenever the endpoints or chunk sizes change:
+
+```
+cargo test speedtest_endpoints -- --ignored --nocapture   # status codes only, fast
+cargo test speedtest_live -- --ignored --nocapture        # full run, prints real rates
+```
+
+Any change to `DOWN_URL`, `UP_URL`, or the chunk constants must be accompanied by a
+passing run of both.
 
 ## Known limitations (honest list)
 

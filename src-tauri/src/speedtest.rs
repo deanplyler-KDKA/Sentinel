@@ -12,11 +12,21 @@ use serde::Serialize;
 
 use crate::timeline;
 
-const DOWN_URL: &str = "https://speed.cloudflare.com/__down?bytes=200000000";
+// Cloudflare rejects __down sizes at/above ~100 MB with 403, so a single
+// request can't both stay accepted and last long enough to measure a fast
+// link (50 MB finishes in well under a second at gigabit). Both directions
+// therefore loop fixed-size chunks until a time window elapses: a fast
+// connection transfers several chunks, a slow one is cut off mid-chunk, and
+// either way the rate is total bytes over measured time.
+const DOWN_URL: &str = "https://speed.cloudflare.com/__down?bytes=50000000";
 const UP_URL: &str = "https://speed.cloudflare.com/__up";
 const PING_ADDR: &str = "speed.cloudflare.com:443";
+const DOWN_CHUNK_BYTES: u64 = 50_000_000;
+const UPLOAD_CHUNK_BYTES: usize = 8 * 1024 * 1024;
 const MEASURE_WINDOW: Duration = Duration::from_secs(8);
-const UPLOAD_BYTES: usize = 25 * 1024 * 1024;
+const UPLOAD_WINDOW: Duration = Duration::from_secs(8);
+/// Backstop so a pathological connection can't loop forever.
+const MAX_CHUNKS: usize = 40;
 
 static RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -61,38 +71,48 @@ fn run_inner() -> Result<SpeedTestResult, String> {
     // Latency first: TCP connect samples to the same host we test against.
     let (ping_ms, jitter_ms) = tcp_ping();
 
-    // Download: stream until the measure window elapses; rate = bytes/time
-    // measured from first byte, so connection setup doesn't skew it.
-    let mut resp = client
-        .get(DOWN_URL)
-        .send()
-        .map_err(|e| format!("download failed to start: {e}"))?
-        .error_for_status()
-        .map_err(|e| format!("download rejected: {e}"))?;
-    // error_for_status only rejects 4xx/5xx. With redirects disabled a 3xx
-    // would otherwise read as an empty body and be recorded as a real 0 Mbps
-    // result, which WOULD pollute the baseline averages (N3).
-    if !resp.status().is_success() {
-        return Err(format!("download endpoint returned {}", resp.status()));
-    }
+    // Download: request chunks back-to-back until the window elapses. Rate is
+    // measured across the whole loop, so per-request setup is amortized rather
+    // than excluded — that matches what a user experiences.
     let mut buf = vec![0u8; 256 * 1024];
     let mut received: u64 = 0;
     let started = Instant::now();
-    loop {
-        match resp.read(&mut buf) {
-            Ok(0) => break,
-            Ok(n) => {
-                received += n as u64;
-                if started.elapsed() >= MEASURE_WINDOW {
+    let mut chunks = 0usize;
+    while started.elapsed() < MEASURE_WINDOW && chunks < MAX_CHUNKS {
+        chunks += 1;
+        let mut resp = client
+            .get(DOWN_URL)
+            .send()
+            .map_err(|e| format!("download failed to start: {e}"))?;
+        // error_for_status covers 4xx/5xx; with redirects disabled an
+        // unexpected 3xx would otherwise read as an empty body and be recorded
+        // as a real 0 Mbps result, polluting the baselines (N3).
+        if !resp.status().is_success() {
+            return Err(format!("download endpoint returned {}", resp.status()));
+        }
+        let mut chunk_read: u64 = 0;
+        loop {
+            match resp.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => {
+                    received += n as u64;
+                    chunk_read += n as u64;
+                    if started.elapsed() >= MEASURE_WINDOW {
+                        break;
+                    }
+                }
+                Err(e) => {
+                    if received == 0 {
+                        return Err(format!("download failed: {e}"));
+                    }
                     break;
                 }
             }
-            Err(e) => {
-                if received == 0 {
-                    return Err(format!("download failed: {e}"));
-                }
-                break;
-            }
+        }
+        // A chunk that ended early without filling the window means the
+        // connection closed on us; don't spin re-requesting.
+        if chunk_read < DOWN_CHUNK_BYTES && started.elapsed() < MEASURE_WINDOW && chunk_read == 0 {
+            break;
         }
     }
     if received == 0 {
@@ -101,24 +121,27 @@ fn run_inner() -> Result<SpeedTestResult, String> {
     let down_secs = started.elapsed().as_secs_f64().max(0.1);
     let down_mbps = (received as f64 * 8.0) / down_secs / 1e6;
 
-    // Upload: POST a fixed buffer of zeros, timed. On a slow uplink this can
-    // time out — but the download already succeeded, so we keep it and report
-    // upload as unmeasured (None, stored as SQL NULL) rather than failing the
-    // whole test (F7). None, never 0.0: "not measured" and "zero" are
-    // different facts, consistent with the rest of the codebase (N4).
-    let payload = vec![0u8; UPLOAD_BYTES];
+    // Upload: same chunked, time-bounded shape as the download. If not even a
+    // single chunk completes (slow uplink hitting the request timeout), upload
+    // is reported as unmeasured — None, never 0.0, since "not measured" and
+    // "zero" are different facts (F7/N4) — while the good download result is
+    // still kept and returned.
+    let payload = vec![0u8; UPLOAD_CHUNK_BYTES];
     let started = Instant::now();
-    let up_mbps: Option<f64> = match client
-        .post(UP_URL)
-        .body(payload)
-        .send()
-        .and_then(|r| r.error_for_status())
-    {
-        Ok(r) if r.status().is_success() => {
-            let up_secs = started.elapsed().as_secs_f64().max(0.1);
-            Some((UPLOAD_BYTES as f64 * 8.0) / up_secs / 1e6)
+    let mut sent: u64 = 0;
+    let mut up_chunks = 0usize;
+    while started.elapsed() < UPLOAD_WINDOW && up_chunks < MAX_CHUNKS {
+        up_chunks += 1;
+        match client.post(UP_URL).body(payload.clone()).send() {
+            Ok(r) if r.status().is_success() => sent += UPLOAD_CHUNK_BYTES as u64,
+            _ => break,
         }
-        _ => None,
+    }
+    let up_mbps: Option<f64> = if sent > 0 {
+        let up_secs = started.elapsed().as_secs_f64().max(0.1);
+        Some((sent as f64 * 8.0) / up_secs / 1e6)
+    } else {
+        None
     };
 
     let ts = chrono::Utc::now().to_rfc3339();
@@ -163,4 +186,62 @@ fn tcp_ping() -> (Option<f64>, Option<f64>) {
 
 fn round1(v: f64) -> f64 {
     (v * 10.0).round() / 10.0
+}
+
+#[cfg(test)]
+mod tests {
+    /// Live network diagnostic — excluded from normal runs (tests must not
+    /// depend on the internet). Run explicitly when the speed test misbehaves:
+    ///   cargo test speedtest_endpoints -- --ignored --nocapture
+    ///
+    /// This exists because the feature originally shipped requesting a 200 MB
+    /// __down, which Cloudflare rejects with 403 — it failed 100% of the time
+    /// and no automated check caught it. Verify the endpoints still accept the
+    /// configured chunk sizes whenever they're changed.
+    #[test]
+    #[ignore]
+    fn speedtest_endpoints() {
+        use std::time::Duration;
+
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(30))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("client");
+
+        let down = client.get(super::DOWN_URL).send().expect("down send");
+        println!("DOWN {} -> {}", super::DOWN_URL, down.status());
+        assert!(
+            down.status().is_success(),
+            "download endpoint rejected the configured chunk size ({})",
+            down.status()
+        );
+
+        let payload = vec![0u8; super::UPLOAD_CHUNK_BYTES];
+        let up = client.post(super::UP_URL).body(payload).send().expect("up send");
+        println!("UP   {} -> {}", super::UP_URL, up.status());
+        assert!(
+            up.status().is_success(),
+            "upload endpoint rejected the configured chunk size ({})",
+            up.status()
+        );
+    }
+
+    /// End-to-end run of the real code path against a throwaway database,
+    /// printing the measured result.
+    ///   cargo test speedtest_live -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn speedtest_live() {
+        let dir = std::env::temp_dir().join("sentinel-speedtest-live");
+        let _ = std::fs::create_dir_all(&dir);
+        crate::timeline::init(&dir).expect("timeline init");
+        match super::run() {
+            Ok(r) => println!(
+                "RESULT down={:.1} Mbps up={:?} ping={:?} jitter={:?}",
+                r.down_mbps, r.up_mbps, r.ping_ms, r.jitter_ms
+            ),
+            Err(e) => panic!("speed test failed: {e}"),
+        }
+    }
 }
