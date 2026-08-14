@@ -90,8 +90,15 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             // SQLite can't drop a NOT NULL constraint in place — rebuild.
             // Any pre-existing 0 upload rows were the old "not measured"
             // sentinel, so they become NULL.
+            // PRAGMA user_version is transactional in SQLite, so keeping it
+            // inside the transaction makes the whole step atomic — there is no
+            // window where the data is migrated but the version still reads 2.
+            // The defensive DROP means a stale speedtests_new (only reachable
+            // if a future refactor reuses a connection after a failed init)
+            // can't pin the database at v2 forever.
             conn.execute_batch(
                 "BEGIN;
+                 DROP TABLE IF EXISTS speedtests_new;
                  CREATE TABLE speedtests_new (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     ts TEXT NOT NULL,
@@ -105,8 +112,8 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
                     FROM speedtests;
                  DROP TABLE speedtests;
                  ALTER TABLE speedtests_new RENAME TO speedtests;
-                 COMMIT;
-                 PRAGMA user_version = 3;",
+                 PRAGMA user_version = 3;
+                 COMMIT;",
             )
             .map_err(|e| format!("migrate schema v2->v3: {e}"))?;
             appdata::log("timeline schema migrated v2 -> v3 (nullable up_mbps)");
