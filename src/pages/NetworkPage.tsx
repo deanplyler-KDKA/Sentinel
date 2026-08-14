@@ -81,7 +81,9 @@ export function NetworkPage() {
         </div>
       </header>
 
-      {testError && <div className="error-banner">Speed test failed: {testError}</div>}
+      {/* Backend messages are self-describing (rate limit, cooldown, network
+          error), so no "failed:" prefix — a cooldown isn't a failure. */}
+      {testError && <div className="error-banner">{testError}</div>}
 
       <div className="grid-3">
         <div className="card">

@@ -52,24 +52,49 @@ Every data collector in Sentinel obeys the same rules:
 
 ## Third-party endpoint constraints (speed test)
 
-Cloudflare's `__down` rejects sizes at or above roughly 100 MB with **403**, so the
-test cannot simply request one large body. It also cannot request a *small* body and
-call it a measurement: 50 MB completes in well under a second on a fast link, which is
-too short to be meaningful. Both directions therefore loop fixed chunks (50 MB down,
-8 MB up) until an 8-second window elapses, and report total bytes over measured time.
+`speed.cloudflare.com` is a free public service with **two independent limits**, both
+discovered the hard way in production:
 
-This was learned the hard way: the feature originally shipped requesting 200 MB and
-failed **100% of the time** with a 403, and no automated test caught it because the
-suite deliberately avoids the network. The guard is now two `#[ignore]`d tests that
-must be run by hand whenever the endpoints or chunk sizes change:
+1. **Size limit.** `__down` rejects sizes at or above roughly 100 MB with **403**. The
+   feature originally shipped requesting 200 MB and therefore failed *100% of the
+   time*; no automated test caught it because the suite deliberately avoids the
+   network.
+2. **Volume-based rate limit.** The service answers **429**, and observation says the
+   budget tracks *bytes*, not just request count: while throttled, a 1 MB request
+   succeeded in the same minute that 10 MB, 25 MB and 50 MB were all refused. The first
+   fix for (1) moved ~150 MB per test and tripped this within a few runs.
+
+The design that satisfies both: a small, hard-capped number of requests per test
+(**≤2 download, ≤2 upload**), 25 MB / 4 MB each — **≤58 MB per test** — stopping early
+once a 4 s / 5 s window elapses; plus a **60-second backend cooldown** applied even to
+failed attempts, since those cost budget too. On a fast link this trades measurement
+precision for being a good citizen of someone else's free service — a deliberate choice.
+
+**The limit is per public IP, which matters enormously behind a VPN.** A VPN exit
+address is shared with every other user on that server, so the budget can be exhausted
+by strangers before Sentinel sends a single byte. This is the most likely explanation
+when a test fails on an otherwise healthy connection, and the 429 message says so
+explicitly (suggesting disconnecting or switching servers) rather than leaving the user
+to guess. `Retry-After` is honoured when the service sends it.
+
+A 429 is never surfaced as a raw status code and never recorded as a 0 Mbps result.
+Throttling that appears *after* some chunks succeeded keeps the partial measurement
+rather than discarding it.
+
+**Do not try to reverse-engineer the limiter by probing it** — every probe extends the
+throttle, which is how a debugging session turns into an hour of 429s.
+
+The guard is two `#[ignore]`d live tests, since the normal suite cannot cover this:
 
 ```
-cargo test speedtest_endpoints -- --ignored --nocapture   # status codes only, fast
+cargo test speedtest_endpoints -- --ignored --nocapture   # 2 requests, status only
 cargo test speedtest_live -- --ignored --nocapture        # full run, prints real rates
 ```
 
-Any change to `DOWN_URL`, `UP_URL`, or the chunk constants must be accompanied by a
-passing run of both.
+Any change to `DOWN_URL`, `UP_URL`, or the chunk/cap constants must be accompanied by a
+passing run of both. **Run them a minute apart, not back to back** — together they issue
+enough requests to trip the rate limit, and the live test enforces the same 60 s
+cooldown the app does.
 
 ## Known limitations (honest list)
 

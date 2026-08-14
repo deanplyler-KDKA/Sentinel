@@ -52,6 +52,16 @@ Everything below is collected without admin rights and without modifying anythin
 - ✅ Startup apps (read-only), collector diagnostics area, Pressure Test report
 - ✅ System tray (open / refresh / quit)
 
+## Speed test: a more robust measurement backend
+
+`speed.cloudflare.com` is a free service that rate-limits per public IP, which is
+fragile behind a shared VPN exit address (see docs/RELIABILITY.md). Sentinel now
+handles the throttling honestly, but the measurement itself would be more dependable
+on **M-Lab NDT7** — an open measurement platform explicitly intended for third-party
+speed tests, with published servers and no per-IP hostility. It needs a WebSocket
+client and the NDT7 protocol, so it is a deliberate project rather than a constant
+swap. Worth doing before this feature is relied on daily.
+
 ## Phase 5.1 — Next (not yet implemented)
 
 - Tray: optional start-with-Windows (autostart plugin) and close-to-tray background
