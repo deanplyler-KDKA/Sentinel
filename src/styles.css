@@ -547,6 +547,54 @@ button {
 .issue-tag { font-size: var(--fs-xs); color: var(--text-faint); white-space: nowrap; }
 .issue-body { font-size: var(--fs-s); color: var(--text-dim); margin-top: 3px; line-height: 1.5; }
 
+.issue-toggle {
+  text-align: left;
+  padding: 0;
+  min-width: 0;
+}
+
+.issue-toggle:hover .issue-title { color: var(--accent); }
+
+.issue-more {
+  font-size: var(--fs-s);
+  font-weight: 600;
+  color: var(--accent);
+  padding: 4px 0 0;
+}
+
+.issue-more:hover { text-decoration: underline; }
+
+.issue-detail {
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+
+.issue-evidence {
+  font-size: var(--fs-s);
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.issue-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.issue-steps li {
+  font-size: var(--fs-s);
+  color: var(--text);
+  line-height: 1.55;
+}
+
 /* legacy recommendation styles (Protect page) */
 .recommendations h3 { font-size: var(--fs-l); font-weight: 600; margin-bottom: var(--sp-3); }
 .rec-allclear { color: var(--text-dim); font-size: var(--fs-m); }

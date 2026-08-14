@@ -3,17 +3,19 @@ import {
   type ReactNode,
 } from 'react';
 import type {
-  HardwareInfo, NetProbe, PerfOverview, PerfPoint, SecuritySnapshot, SpeedTestRow,
+  HardwareInfo, NetProbe, NetworkDetail, PerfOverview, PerfPoint, SecuritySnapshot,
+  SpeedTestRow, StartupApp,
 } from '../types/security';
 import {
-  getHardwareInfo, getPerfOverview, getPerfSeries, getSecuritySnapshot,
-  getSpeedTestHistory, runNetProbe,
+  getHardwareInfo, getNetworkDetail, getPerfOverview, getPerfSeries, getSecuritySnapshot,
+  getSpeedTestHistory, getStartupApps, runNetProbe,
 } from './api';
 import { computeScore, type ScoreReport } from './score';
 import {
   computeNetworkHealth, computeOverall, computePcHealth, explain,
   type Explanation, type HealthReport, type Overall,
 } from './health';
+import { buildSuggestions, type Suggestion } from './suggest';
 
 const SNAPSHOT_INTERVAL_MS = 60_000;
 const PERF_INTERVAL_MS = 3_000;
@@ -36,6 +38,9 @@ interface Store {
   netHealth: HealthReport | null;
   overall: Overall;
   explanations: Explanation[];
+  suggestions: Suggestion[];
+  networkDetail: NetworkDetail | null;
+  startupApps: StartupApp[];
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -49,6 +54,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [probe, setProbe] = useState<NetProbe | null>(null);
   const [probeRunning, setProbeRunning] = useState(false);
   const [speedHistory, setSpeedHistory] = useState<SpeedTestRow[]>([]);
+  const [networkDetail, setNetworkDetail] = useState<NetworkDetail | null>(null);
+  const [startupApps, setStartupApps] = useState<StartupApp[]>([]);
   const probeBusy = useRef(false);
 
   const refreshSnapshot = useCallback(() => {
@@ -81,6 +88,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     refreshSpeedHistory();
     refreshProbe();
     getHardwareInfo().then(setHardware).catch(() => {});
+    getNetworkDetail().then(setNetworkDetail).catch(() => {});
+    getStartupApps().then(setStartupApps).catch(() => {});
     const snapId = setInterval(refreshSnapshot, SNAPSHOT_INTERVAL_MS);
     const probeId = setInterval(refreshProbe, PROBE_INTERVAL_MS);
     // Tray → "Refresh status".
@@ -130,6 +139,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     () => explain(perf, probe, snapshot, security, speedHistory),
     [perf, probe, snapshot, security, speedHistory],
   );
+  const suggestions = useMemo(
+    () =>
+      buildSuggestions({
+        security, snapshot, perf, hardware,
+        detail: networkDetail, probe, speedHistory, startupApps,
+      }),
+    [security, snapshot, perf, hardware, networkDetail, probe, speedHistory, startupApps],
+  );
 
   const value: Store = {
     snapshot, snapshotLoading, refreshSnapshot,
@@ -137,6 +154,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     probe, probeRunning, refreshProbe,
     speedHistory, refreshSpeedHistory,
     security, pcHealth, netHealth, overall, explanations,
+    suggestions, networkDetail, startupApps,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

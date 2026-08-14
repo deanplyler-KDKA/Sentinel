@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../lib/store';
 import { getNetworkDetail, runSpeedTest } from '../lib/api';
 import { DetailRow } from '../components/DetailRow';
+import { SuggestionList } from '../components/SuggestionList';
 import { assessDns } from '../lib/score';
 import { formatBps, relativeTime } from '../lib/format';
 import type { NetworkDetail, SpeedTestRow } from '../types/security';
@@ -14,7 +15,9 @@ function avg(rows: SpeedTestRow[], days: number): number | null {
 }
 
 export function NetworkPage() {
-  const { snapshot, probe, probeRunning, refreshProbe, speedHistory, refreshSpeedHistory, series } = useStore();
+  const { snapshot, probe, probeRunning, refreshProbe, speedHistory, refreshSpeedHistory, series,
+    suggestions } = useStore();
+  const networkSuggestions = suggestions.filter((s) => s.area === 'Network');
   const [detail, setDetail] = useState<NetworkDetail | null>(null);
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
@@ -84,6 +87,13 @@ export function NetworkPage() {
       {/* Backend messages are self-describing (rate limit, cooldown, network
           error), so no "failed:" prefix — a cooldown isn't a failure. */}
       {testError && <div className="error-banner">{testError}</div>}
+
+      {networkSuggestions.length > 0 && (
+        <>
+          <div className="section-title">Why it might be slow, and what helps</div>
+          <SuggestionList suggestions={networkSuggestions} />
+        </>
+      )}
 
       <div className="grid-3">
         <div className="card">

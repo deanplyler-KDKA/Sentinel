@@ -11,6 +11,7 @@ import type {
   StartupApp,
   TimelineEvent,
 } from '../types/security';
+import type { SettingsTarget } from './suggest';
 import {
   mockHardware,
   mockNetworkDetail,
@@ -118,4 +119,15 @@ export async function getStartupApps(): Promise<StartupApp[]> {
 export async function getDiagnostics(): Promise<CollectorStatus[]> {
   if (!isTauri) return [];
   return invoke<CollectorStatus[]>('get_diagnostics');
+}
+
+/**
+ * Opens a Windows settings page. `target` is a closed union mirroring the
+ * Rust enum — not a URL — so the WebView can only pick from a fixed menu.
+ */
+export async function openWindowsSetting(target: SettingsTarget): Promise<void> {
+  if (!isTauri) {
+    throw new Error('Opening Windows settings only works in the installed app.');
+  }
+  return invoke<void>('open_windows_setting', { target });
 }

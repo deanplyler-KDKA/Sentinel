@@ -4,6 +4,7 @@ import { relativeTime, formatBps } from '../lib/format';
 import { ScoreDial } from '../components/ScoreDial';
 import { StatusPill, type PillState } from '../components/StatusPill';
 import { RefreshIcon } from '../components/Icons';
+import { SuggestionList } from '../components/SuggestionList';
 import { getTimeline } from '../lib/api';
 import { useEffect, useState } from 'react';
 import type { TimelineEvent } from '../types/security';
@@ -27,7 +28,7 @@ function stateWord(score: number | null): string {
 export function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void }) {
   const {
     snapshot, snapshotLoading, refreshSnapshot, security, pcHealth, netHealth, overall,
-    explanations, perf, probe, series,
+    explanations, perf, probe, series, suggestions,
   } = useStore();
   const lastSample = series[series.length - 1] ?? null;
   const [recent, setRecent] = useState<TimelineEvent[]>([]);
@@ -43,7 +44,12 @@ export function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void })
 
   const storage = perf?.disks[0] ?? null;
   const storageScore = pcHealth?.factors.find((f) => f.id === 'storage');
-  const issues = explanations.slice(0, 4);
+  // Explanations describe what's happening; suggestions say what to do about
+  // it. Only show explanations that aren't already covered by a suggestion.
+  const suggestionAreas = new Set(suggestions.map((s) => s.id.split('-')[0]));
+  const issues = explanations
+    .filter((e) => !suggestionAreas.has(e.id.split('-')[0]))
+    .slice(0, 3);
 
   return (
     <div>
@@ -78,9 +84,20 @@ export function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void })
         />
       </div>
 
-      {issues.length > 0 && (
+      {(suggestions.length > 0 || snapshot) && (
         <>
           <div className="section-title">Needs your attention</div>
+          <SuggestionList
+            suggestions={suggestions}
+            limit={4}
+            emptyMessage="Everything looks good — nothing needs your attention right now."
+          />
+        </>
+      )}
+
+      {issues.length > 0 && (
+        <>
+          <div className="section-title">What Sentinel is seeing</div>
           <div className="stack">
             {issues.map((e) => (
               <div key={e.id} className={`issue issue-${e.severity === 'bad' ? 'bad' : e.severity === 'info' ? 'info' : 'warn'}`}>
@@ -92,12 +109,6 @@ export function DashboardPage({ onNavigate }: { onNavigate: (p: Page) => void })
             ))}
           </div>
         </>
-      )}
-      {issues.length === 0 && snapshot && (
-        <div className="issue issue-info" style={{ marginTop: 'var(--sp-3)' }}>
-          <div className="issue-title">Everything looks good</div>
-          <div className="issue-body">No issues need your attention right now.</div>
-        </div>
       )}
 
       <div className="section-title">At a glance</div>

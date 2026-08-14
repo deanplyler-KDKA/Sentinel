@@ -65,6 +65,7 @@ fn fit_window_to_monitor(app: &tauri::AppHandle) {
     let _ = win.set_size(tauri::LogicalSize::new(w, h));
     let _ = win.center();
 }
+mod actions;
 mod defender;
 mod diag;
 mod firewall;
@@ -116,7 +117,8 @@ pub fn run() {
             commands::run_speed_test,
             commands::get_speedtest_history,
             commands::get_startup_apps,
-            commands::get_diagnostics
+            commands::get_diagnostics,
+            commands::open_windows_setting
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

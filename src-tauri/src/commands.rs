@@ -1,6 +1,6 @@
 use crate::models::{CollectorError, SecuritySnapshot, SpeedTestRow, TimelineEvent};
-use crate::{appdata, defender, diag, firewall, hardware, netinfo, netprobe, network, nord,
-    perf, speedtest, startup, timeline, windows};
+use crate::{actions, appdata, defender, diag, firewall, hardware, netinfo, netprobe, network,
+    nord, perf, speedtest, startup, timeline, windows};
 use serde::Serialize;
 
 /// The only IPC command in Phase 1. Zero arguments by design — the frontend
@@ -148,6 +148,18 @@ pub async fn get_startup_apps() -> Result<Vec<startup::StartupApp>, String> {
 #[tauri::command]
 pub fn get_diagnostics() -> Vec<diag::CollectorStatus> {
     diag::all()
+}
+
+/// Opens a Windows settings page so the user can act on a suggestion.
+///
+/// This is the one command that takes a parameter, and deliberately so: the
+/// type is a closed enum (see actions.rs), not a string. serde rejects any
+/// value outside the listed variants, so the WebView selects from a fixed
+/// menu rather than supplying a target. Sentinel still changes nothing — it
+/// only navigates the user to Windows' own UI.
+#[tauri::command]
+pub fn open_windows_setting(target: actions::SettingsTarget) -> Result<(), String> {
+    actions::open(target)
 }
 
 #[derive(Debug, Clone, Serialize)]

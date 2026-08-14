@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../lib/store';
+import { SuggestionList } from '../components/SuggestionList';
 import { StatusPill, type PillState } from '../components/StatusPill';
 import type { HealthFactor } from '../lib/health';
 
@@ -30,7 +31,8 @@ interface PressureSection {
 }
 
 export function HealthPage() {
-  const { security, pcHealth, netHealth, overall, snapshot, perf, hardware, probe, explanations } = useStore();
+  const { security, pcHealth, netHealth, overall, snapshot, perf, hardware, probe, explanations,
+    suggestions } = useStore();
   const [report, setReport] = useState<PressureSection[] | null>(null);
   const [running, setRunning] = useState(false);
 
@@ -184,6 +186,12 @@ export function HealthPage() {
 
       {explanations.length > 0 && (
         <>
+          <div className="section-title">Recommended fixes</div>
+          <SuggestionList
+            suggestions={suggestions}
+            emptyMessage="Nothing needs fixing right now — every check Sentinel can make is passing."
+          />
+
           <div className="section-title">What Sentinel can tell you right now</div>
           <div className="stack">
             {explanations.map((e) => (
