@@ -195,6 +195,13 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
     appdata::export_diagnostics(&app)
 }
 
+/// Saves a shareable health report. The frontend renders the text (it already
+/// holds the scores and suggestions); the backend owns the destination path.
+#[tauri::command]
+pub fn export_report(app: tauri::AppHandle, content: String) -> Result<String, String> {
+    appdata::export_report(&app, &content)
+}
+
 /// Resets Sentinel's own stored data (never Windows state). Zero arguments.
 #[tauri::command]
 pub fn reset_app_data(app: tauri::AppHandle) -> Result<String, String> {

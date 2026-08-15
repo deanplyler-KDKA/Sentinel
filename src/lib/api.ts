@@ -49,6 +49,12 @@ export async function getAppInfo(): Promise<AppInfo> {
   return invoke<AppInfo>('get_app_info');
 }
 
+/** Saves a shareable health report; returns the path it was written to. */
+export async function exportReport(content: string): Promise<string> {
+  if (!isTauri) return '(browser preview — nothing written)';
+  return invoke<string>('export_report', { content });
+}
+
 /** Returns the path the diagnostics bundle was written to. */
 export async function exportDiagnostics(): Promise<string> {
   if (!isTauri) return '(browser preview — no diagnostics)';

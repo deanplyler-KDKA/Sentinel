@@ -175,6 +175,74 @@ pub fn export_diagnostics(app: &tauri::AppHandle) -> Result<String, String> {
     Ok(out.display().to_string())
 }
 
+/// Writes a human-readable health report to Downloads and returns its path.
+///
+/// SECURITY: the caller supplies the report *text*, never the path. The
+/// filename and directory are chosen here (Downloads + timestamp, create_new
+/// so nothing existing is overwritten or followed), so the WebView cannot
+/// direct a write anywhere. Content is our own UI's rendering of data the
+/// user is already looking at.
+pub fn export_report(app: &tauri::AppHandle, content: &str) -> Result<String, String> {
+    let downloads = app
+        .path()
+        .download_dir()
+        .map_err(|e| format!("no Downloads folder: {e}"))?;
+    let path = write_report_to(&downloads, content)?;
+    log("health report exported");
+    Ok(path)
+}
+
+/// Split out from `export_report` so the naming and collision behaviour can be
+/// tested without a Tauri handle. Two reports saved in the same second get
+/// distinct names rather than one clobbering the other.
+fn write_report_to(dir: &Path, content: &str) -> Result<String, String> {
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    for attempt in 0..100 {
+        let name = if attempt == 0 {
+            format!("sentinel-report-{stamp}.txt")
+        } else {
+            format!("sentinel-report-{stamp}-{attempt}.txt")
+        };
+        let out = dir.join(name);
+        match OpenOptions::new().write(true).create_new(true).open(&out) {
+            Ok(mut file) => {
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("write report: {e}"))?;
+                return Ok(out.display().to_string());
+            }
+            // create_new refuses to touch anything that already exists — never
+            // overwrite, never follow a planted link. Try the next name.
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("write report: {e}")),
+        }
+    }
+    Err("couldn't find an unused report filename".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn report_never_overwrites_an_existing_file() {
+        let dir = std::env::temp_dir().join(format!(
+            "sentinel-report-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::create_dir_all(&dir);
+
+        let first = write_report_to(&dir, "first report").expect("first write");
+        let second = write_report_to(&dir, "second report").expect("second write");
+
+        // Same second, so the names must differ rather than collide.
+        assert_ne!(first, second);
+        assert_eq!(fs::read_to_string(&first).unwrap(), "first report");
+        assert_eq!(fs::read_to_string(&second).unwrap(), "second report");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
 /// Deletes Sentinel's own stored data (logs, data-version marker, timeline
 /// events) and recreates a fresh layout. Does not touch the WebView cache
 /// while running — that is removed by uninstalling or deleting the app-data

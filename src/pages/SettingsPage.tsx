@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import {
-  exportDiagnostics, getAppInfo, getDiagnostics, resetAppData, type AppInfo,
+  exportDiagnostics, exportReport, getAppInfo, getDiagnostics, resetAppData, type AppInfo,
 } from '../lib/api';
 import { relativeTime } from '../lib/format';
+import { buildReport } from '../lib/report';
+import { useStore } from '../lib/store';
 import { applyTheme, getTheme, type Theme } from '../lib/theme';
 import type { CollectorStatus } from '../types/security';
 
 export function SettingsPage() {
+  const {
+    snapshot, security, pcHealth, netHealth, overall, perf, hardware, probe,
+    speedHistory, suggestions,
+  } = useStore();
   const [info, setInfo] = useState<AppInfo | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
@@ -28,6 +34,20 @@ export function SettingsPage() {
       setStatus(`Diagnostics saved to: ${await exportDiagnostics()}`);
     } catch (e) {
       setStatus(`Export failed: ${e}`);
+    }
+  }
+
+  async function onSaveReport() {
+    setStatus('Building report…');
+    try {
+      const text = buildReport({
+        appVersion: info?.version ?? 'unknown',
+        snapshot, security, pcHealth, netHealth, overall,
+        perf, hardware, probe, speedHistory, suggestions,
+      });
+      setStatus(`Health report saved to: ${await exportReport(text)}`);
+    } catch (e) {
+      setStatus(`Couldn’t save the report: ${e}`);
     }
   }
 
@@ -95,7 +115,19 @@ export function SettingsPage() {
             </p>
           </div>
 
+          <div className="settings-section">
+            <h3>Getting help</h3>
+            <p>
+              Save a report of everything Sentinel found — your scores, every check, drive health
+              and the full fix list — as a text file you can send to whoever helps you with this
+              computer. It contains no passwords, file contents, IP addresses or network names.
+            </p>
+          </div>
+
           <div className="row">
+            <button className="btn btn-primary" onClick={onSaveReport}>
+              Save health report
+            </button>
             <button className="btn" onClick={onExport}>Export diagnostics</button>
             <button className="btn btn-danger" onClick={onReset}>Reset application data</button>
           </div>

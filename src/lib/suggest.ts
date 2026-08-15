@@ -275,6 +275,23 @@ function systemSuggestions(
   const out: Suggestion[] = [];
 
   // Security — driven by the existing score so the two never disagree.
+  // The score's `recommendation` is the ACTION; these say why it matters, so
+  // the two don't read as the same sentence twice.
+  const WHY: Record<string, string> = {
+    rtp: 'Real-time protection is the part of your antivirus that actually stops threats as they arrive. Without it, scans only find things after they are already on the PC.',
+    cloud: 'Cloud-delivered protection lets Defender recognise brand-new threats within minutes of them appearing anywhere in the world, instead of waiting for the next definition update.',
+    tamper: 'Tamper protection stops other software — including malware — from quietly switching your antivirus off. It is what keeps the other protections honest.',
+    sig: 'Definitions are how your antivirus recognises known threats. Old definitions mean it is looking for last month’s problems.',
+    cfa: 'Controlled folder access blocks unknown programs from modifying your documents and photos. It is the single most effective defence against ransomware encrypting your files.',
+    'fw-private': 'The firewall controls what can reach this PC from your home network. Off means anything on the network can attempt a connection.',
+    'fw-public': 'The public-network firewall is what protects you on café, airport and hotel Wi-Fi, where you have no idea who else is connected.',
+    'fw-domain': 'The domain firewall applies on managed work networks.',
+    secureboot: 'Secure Boot verifies that Windows itself has not been tampered with before it loads. It blocks a class of malware that would otherwise start before any antivirus does.',
+    bitlocker: 'Drive encryption means that if this computer is lost or stolen, the files on it cannot be read by whoever ends up with it.',
+    updates: 'Most real-world attacks use flaws that have already been fixed. Being current is the single highest-value security habit there is.',
+    dns: 'Unencrypted DNS lets whoever runs the network see which sites you visit, even when the sites themselves are encrypted.',
+    'vpn-connected': 'A VPN encrypts your traffic so the network operator cannot see it. Most useful on Wi-Fi you do not control.',
+  };
   const failed = security?.results.filter((r) => r.state === 'fail') ?? [];
   const securityActions: Record<string, { target: SettingsTarget; label: string }> = {
     rtp: { target: 'virus-protection', label: 'Open Virus & threat protection' },
@@ -296,7 +313,7 @@ function systemSuggestions(
       area: 'Security',
       severity: isCritical ? 'critical' : 'important',
       title: f.label,
-      why: f.recommendation,
+      why: WHY[f.id] ?? f.recommendation,
       evidence: `Worth ${f.points} points of your security score, currently not counted.`,
       steps: [f.recommendation],
       action: securityActions[f.id],

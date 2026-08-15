@@ -108,6 +108,7 @@ pub fn run() {
             commands::get_security_snapshot,
             commands::get_app_info,
             commands::export_diagnostics,
+            commands::export_report,
             commands::reset_app_data,
             commands::get_timeline,
             commands::get_perf_overview,
