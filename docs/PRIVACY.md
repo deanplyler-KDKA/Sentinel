@@ -15,10 +15,21 @@ Sentinel is a local application. In plain terms:
      connected — the same as loading any website. This is not telemetry: nothing about
      you or your PC is transmitted. You can watch it run in Settings → Collector
      diagnostics (`network/probe`).
-  2. **Internet speed test (only when you click it).** Downloads throwaway data from and
-     uploads meaningless zero-bytes to Cloudflare's public speed service
-     (speed.cloudflare.com), timed to measure throughput. Never runs automatically;
-     results are stored only on this PC.
+  2. **Internet speed test (only when you click it).** Never runs automatically. You
+     choose which measurement service to use, and the two differ in a way that matters:
+
+     - **M-Lab (default).** An open measurement platform run for public-interest
+       internet research, purpose-built for third-party speed tests, so it stays
+       reliable. **M-Lab publishes every measurement as open research data, and that
+       published data includes your IP address.** It does not include anything else
+       about your PC. If you would rather not appear in a public dataset, choose
+       Cloudflare. This is stated next to the selector in the app, not just here.
+     - **Cloudflare.** Results are not published, but the service limits how often you
+       can test, and that limit is shared by everyone using the same public IP — which
+       a VPN exit address usually is. Reliable enough for occasional use.
+
+     Either way the test transfers throwaway bytes (discarded data down, zeros up) and
+     carries nothing about you or your files. Results are stored only on this PC.
 
   The WebView itself has no network capability at all — both paths run in the Rust
   backend, to fixed addresses that are never constructed from external input. The speed

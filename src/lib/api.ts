@@ -7,6 +7,7 @@ import type {
   PerfOverview,
   PerfPoint,
   SecuritySnapshot,
+  SpeedEngine,
   SpeedTestRow,
   StartupApp,
   TimelineEvent,
@@ -98,12 +99,12 @@ export async function runNetProbe(): Promise<NetProbe> {
   return invoke<NetProbe>('run_net_probe');
 }
 
-export async function runSpeedTest(): Promise<SpeedTestRow> {
+export async function runSpeedTest(engine: SpeedEngine): Promise<SpeedTestRow> {
   if (!isTauri) {
     await new Promise((r) => setTimeout(r, 3000));
-    return mockSpeedTests()[0];
+    return { ...mockSpeedTests()[0], engine };
   }
-  return invoke<SpeedTestRow>('run_speed_test');
+  return invoke<SpeedTestRow>('run_speed_test', { engine });
 }
 
 export async function getSpeedTestHistory(): Promise<SpeedTestRow[]> {

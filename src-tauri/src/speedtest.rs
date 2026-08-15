@@ -94,16 +94,46 @@ pub struct SpeedTestResult {
     pub up_mbps: Option<f64>,
     pub ping_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
+    /// Which service measured this. Results from different engines are not
+    /// directly comparable, so baselines are computed per engine.
+    pub engine: SpeedEngine,
+    /// M-Lab reports the server that handled the test; Cloudflare doesn't.
+    pub server: Option<String>,
 }
 
-pub fn run() -> Result<SpeedTestResult, String> {
+/// Which measurement service to use. Closed enum, not a string — the WebView
+/// picks from a fixed menu (same reasoning as actions::SettingsTarget).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SpeedEngine {
+    /// Private — results are not published — but rate-limits hard, especially
+    /// behind a shared VPN exit IP.
+    Cloudflare,
+    /// Purpose-built for third-party speed tests and far more reliable, but
+    /// every measurement is published as open research data including the
+    /// client IP. Disclosed in the UI and docs/PRIVACY.md.
+    Mlab,
+}
+
+impl SpeedEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloudflare => "cloudflare",
+            Self::Mlab => "mlab",
+        }
+    }
+}
+
+pub fn run(engine: SpeedEngine) -> Result<SpeedTestResult, String> {
     if RUNNING.swap(true, Ordering::SeqCst) {
         return Err("a speed test is already running".into());
     }
     let _guard = RunningGuard;
 
-    // Cooldown: repeated back-to-back tests are what triggers the service's
-    // rate limiting, and the result wouldn't be meaningfully different anyway.
+    // Cooldown: repeated back-to-back tests are what triggers rate limiting,
+    // and the result wouldn't be meaningfully different anyway. It applies to
+    // both engines — the point is to stop rapid clicking, not just to appease
+    // one service.
     if let Ok(last) = LAST_RUN.lock() {
         if let Some(at) = *last {
             let since = at.elapsed();
@@ -116,13 +146,43 @@ pub fn run() -> Result<SpeedTestResult, String> {
         }
     }
 
-    let result = run_inner();
+    let result = match engine {
+        SpeedEngine::Cloudflare => run_inner(),
+        SpeedEngine::Mlab => run_mlab(),
+    };
     // Record the attempt regardless of outcome: a failed attempt still cost
     // requests, so the cooldown must apply to it too.
     if let Ok(mut last) = LAST_RUN.lock() {
         *last = Some(Instant::now());
     }
     result
+}
+
+/// M-Lab path. Latency still comes from our own TCP probe so the ping column
+/// is measured the same way for both engines and stays comparable.
+fn run_mlab() -> Result<SpeedTestResult, String> {
+    let (ping_ms, jitter_ms) = tcp_ping();
+    let outcome = crate::ndt7::run()?;
+    let ts = chrono::Utc::now().to_rfc3339();
+    let id = timeline::save_speedtest(
+        &ts,
+        outcome.down_mbps,
+        outcome.up_mbps,
+        ping_ms,
+        jitter_ms,
+        SpeedEngine::Mlab.as_str(),
+    )?;
+    timeline::record_speedtest_event(outcome.down_mbps, outcome.up_mbps);
+    Ok(SpeedTestResult {
+        id,
+        ts,
+        down_mbps: round1(outcome.down_mbps),
+        up_mbps: outcome.up_mbps.map(round1),
+        ping_ms: ping_ms.map(round1),
+        jitter_ms: jitter_ms.map(round1),
+        engine: SpeedEngine::Mlab,
+        server: Some(outcome.server),
+    })
 }
 
 fn run_inner() -> Result<SpeedTestResult, String> {
@@ -216,7 +276,14 @@ fn run_inner() -> Result<SpeedTestResult, String> {
     };
 
     let ts = chrono::Utc::now().to_rfc3339();
-    let id = timeline::save_speedtest(&ts, down_mbps, up_mbps, ping_ms, jitter_ms)?;
+    let id = timeline::save_speedtest(
+        &ts,
+        down_mbps,
+        up_mbps,
+        ping_ms,
+        jitter_ms,
+        SpeedEngine::Cloudflare.as_str(),
+    )?;
     timeline::record_speedtest_event(down_mbps, up_mbps);
 
     Ok(SpeedTestResult {
@@ -226,6 +293,8 @@ fn run_inner() -> Result<SpeedTestResult, String> {
         up_mbps: up_mbps.map(round1),
         ping_ms: ping_ms.map(round1),
         jitter_ms: jitter_ms.map(round1),
+        engine: SpeedEngine::Cloudflare,
+        server: None,
     })
 }
 
@@ -261,6 +330,24 @@ fn round1(v: f64) -> f64 {
 
 #[cfg(test)]
 mod tests {
+    /// The frontend sends the engine as a bare lowercase string. A rename
+    /// mismatch here would only fail at runtime, in the one code path the
+    /// offline suite can't exercise — so pin the wire format.
+    #[test]
+    fn engine_deserializes_from_the_exact_frontend_payload() {
+        #[derive(serde::Deserialize)]
+        struct Args {
+            engine: super::SpeedEngine,
+        }
+        let a: Args = serde_json::from_str(r#"{"engine":"mlab"}"#).expect("mlab");
+        assert_eq!(a.engine, super::SpeedEngine::Mlab);
+        let b: Args = serde_json::from_str(r#"{"engine":"cloudflare"}"#).expect("cloudflare");
+        assert_eq!(b.engine, super::SpeedEngine::Cloudflare);
+        // Anything else must be rejected rather than silently defaulted.
+        assert!(serde_json::from_str::<Args>(r#"{"engine":"http://evil"}"#).is_err());
+        assert!(serde_json::from_str::<Args>(r#"{"engine":"MLAB"}"#).is_err());
+    }
+
     /// Live network diagnostic — excluded from normal runs (tests must not
     /// depend on the internet). Run explicitly when the speed test misbehaves:
     ///   cargo test speedtest_endpoints -- --ignored --nocapture
@@ -307,7 +394,7 @@ mod tests {
         let dir = std::env::temp_dir().join("sentinel-speedtest-live");
         let _ = std::fs::create_dir_all(&dir);
         crate::timeline::init(&dir).expect("timeline init");
-        match super::run() {
+        match super::run(super::SpeedEngine::Cloudflare) {
             Ok(r) => println!(
                 "RESULT down={:.1} Mbps up={:?} ping={:?} jitter={:?}",
                 r.down_mbps, r.up_mbps, r.ping_ms, r.jitter_ms
@@ -318,7 +405,7 @@ mod tests {
         // The cooldown must reject an immediate second run *before* issuing any
         // request — that's what stops rapid clicking from getting the user
         // rate-limited. Costs no network traffic to verify.
-        match super::run() {
+        match super::run(super::SpeedEngine::Cloudflare) {
             Ok(_) => panic!("cooldown did not apply to a back-to-back run"),
             Err(e) => {
                 println!("COOLDOWN {e}");

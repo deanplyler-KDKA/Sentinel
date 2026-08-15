@@ -163,6 +163,9 @@ pub struct SpeedTestRow {
     pub up_mbps: Option<f64>,
     pub ping_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
+    /// "cloudflare" | "mlab" — results from different services are not
+    /// directly comparable, so baselines are computed per engine.
+    pub engine: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,4 +1,4 @@
-use tauri::Manager;
+﻿use tauri::Manager;
 
 mod appdata;
 mod commands;
@@ -72,6 +72,7 @@ mod firewall;
 mod hardware;
 mod models;
 mod netinfo;
+mod ndt7;
 mod netprobe;
 mod network;
 mod nord;

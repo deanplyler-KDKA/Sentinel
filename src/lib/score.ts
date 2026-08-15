@@ -1,7 +1,18 @@
 import type { SecuritySnapshot } from '../types/security';
 
-// null = the underlying data couldn't be read: scores 0, shown as "Unknown".
-type CheckState = boolean | null;
+/**
+ * A check's outcome:
+ *   true/false — measured, passed or failed
+ *   null       — could NOT be measured. Scores 0 but stays in the denominator,
+ *                so missing data can never flatter the score ("unknown ≠ safe").
+ *   'na'       — genuinely doesn't apply to this machine (no VPN installed, a
+ *                capability the platform lacks). Removed from the denominator
+ *                entirely, because penalising someone for not owning optional
+ *                software would be dishonest.
+ * The distinction between null and 'na' is the whole point: one is a gap in
+ * our knowledge, the other is a fact about the machine.
+ */
+type CheckState = boolean | null | 'na';
 
 export interface Check {
   id: string;
@@ -19,7 +30,7 @@ export interface CheckResult {
   label: string;
   points: number;
   earned: number;
-  state: 'pass' | 'fail' | 'unknown';
+  state: 'pass' | 'fail' | 'unknown' | 'na';
   recommendation: string;
 }
 
@@ -146,12 +157,12 @@ export const CHECKS: Check[] = [
     recommendation: 'Turn on Cloud-delivered protection in Windows Security for faster response to new threats.',
   },
   {
-    id: 'tamper', group: 'Antivirus', label: 'Tamper protection', points: 5,
+    id: 'tamper', group: 'Antivirus', label: 'Tamper protection', points: 6,
     evaluate: (s) => s.defender && s.defender.tamperProtection,
     recommendation: 'Turn on Tamper protection so malware can’t switch off your antivirus.',
   },
   {
-    id: 'sig', group: 'Antivirus', label: 'Definitions up to date', points: 5,
+    id: 'sig', group: 'Antivirus', label: 'Definitions up to date', points: 6,
     evaluate: (s) =>
       s.defender && s.defender.signatureAgeDays !== null && s.defender.signatureAgeDays <= 1,
     recommendation: 'Check for protection updates in Windows Security — your virus definitions are getting old.',
@@ -182,7 +193,7 @@ export const CHECKS: Check[] = [
     recommendation: 'Turn on BitLocker (Settings → Privacy & security → Device encryption) so your files are safe if the PC is lost or stolen.',
   },
   {
-    id: 'updates', group: 'System', label: 'Windows up to date', points: 10,
+    id: 'updates', group: 'System', label: 'Windows up to date', points: 11,
     evaluate: windowsUpdated,
     recommendation: 'Open Windows Update and install pending updates (restart if one is waiting).',
   },
@@ -192,14 +203,17 @@ export const CHECKS: Check[] = [
     recommendation: 'Your DNS lookups travel unencrypted. Connect your VPN, or turn on DNS over HTTPS (Settings → Network & internet → Wi-Fi → DNS server assignment → Encrypted).',
   },
   {
-    id: 'vpn-installed', group: 'Network', label: 'VPN available', points: 3,
-    evaluate: (s) => s.vpn && s.vpn.installed,
-    recommendation: 'Install a VPN for privacy on untrusted networks.',
-  },
-  {
+    // A VPN is optional privacy tooling, not a security requirement. If none
+    // is installed the check doesn't apply — we don't dock points for
+    // declining to buy a subscription. If one IS installed, whether it's
+    // connected is genuinely actionable, so it scores.
     id: 'vpn-connected', group: 'Network', label: 'VPN connected', points: 3,
-    evaluate: (s) => s.vpn && s.vpn.connected,
-    recommendation: 'Connect NordVPN to encrypt your traffic.',
+    evaluate: (s) => {
+      if (!s.vpn) return null;
+      if (!s.vpn.installed) return 'na';
+      return s.vpn.connected;
+    },
+    recommendation: 'Connect your VPN to encrypt traffic on untrusted networks.',
   },
   {
     id: 'cfa', group: 'Ransomware', label: 'Ransomware protection', points: 10,
@@ -219,18 +233,28 @@ export function bandFor(score: number): Band {
 export function computeScore(s: SecuritySnapshot): ScoreReport {
   const results: CheckResult[] = CHECKS.map((c) => {
     const value = c.evaluate(s);
-    const state = value === null ? 'unknown' : value ? 'pass' : 'fail';
+    const state =
+      value === 'na' ? 'na' : value === null ? 'unknown' : value ? 'pass' : 'fail';
     return {
       id: c.id,
       group: c.group,
       label: c.label,
       points: c.points,
-      earned: value ? c.points : 0,
+      earned: value === true ? c.points : 0,
       state,
       recommendation: c.recommendation,
     };
   });
-  const score = results.reduce((sum, r) => sum + r.earned, 0);
+
+  // Score out of the points that actually apply to this machine. Checks that
+  // don't apply leave the denominator; checks we simply couldn't measure stay
+  // in it and score zero, so a broken collector can never inflate the number.
+  const applicable = results
+    .filter((r) => r.state !== 'na')
+    .reduce((sum, r) => sum + r.points, 0);
+  const earned = results.reduce((sum, r) => sum + r.earned, 0);
+  const score = applicable > 0 ? Math.round((earned / applicable) * 100) : 0;
+
   const unknownPoints = results
     .filter((r) => r.state === 'unknown')
     .reduce((sum, r) => sum + r.points, 0);

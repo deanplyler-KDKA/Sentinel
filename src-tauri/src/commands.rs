@@ -124,12 +124,18 @@ pub async fn run_net_probe() -> Result<netprobe::NetProbe, String> {
         .map_err(|e| format!("task failed: {e}"))?
 }
 
-/// User-initiated internet speed test (the app's only network communication).
+/// User-initiated internet speed test. `engine` is a closed enum (see
+/// speedtest::SpeedEngine) — the WebView selects a service, it cannot supply
+/// a URL.
 #[tauri::command]
-pub async fn run_speed_test() -> Result<speedtest::SpeedTestResult, String> {
-    tauri::async_runtime::spawn_blocking(|| diag::track("network/speedtest", speedtest::run))
-        .await
-        .map_err(|e| format!("task failed: {e}"))?
+pub async fn run_speed_test(
+    engine: speedtest::SpeedEngine,
+) -> Result<speedtest::SpeedTestResult, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        diag::track("network/speedtest", || speedtest::run(engine))
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))?
 }
 
 #[tauri::command]

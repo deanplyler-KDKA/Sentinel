@@ -167,12 +167,13 @@ export function mockProbe(): NetProbe {
 export function mockSpeedTests(): SpeedTestRow[] {
   const now = Date.now();
   const at = (d: number) => new Date(now - d * 86_400_000).toISOString();
+  const e = 'mlab' as const;
   return [
-    { id: 5, ts: at(0), downMbps: 418.2, upMbps: 41.5, pingMs: 19.2, jitterMs: 2.4 },
-    { id: 4, ts: at(2), downMbps: 802.1, upMbps: 44.0, pingMs: 17.8, jitterMs: 1.9 },
-    { id: 3, ts: at(9), downMbps: 780.5, upMbps: 42.2, pingMs: 18.5, jitterMs: 2.2 },
-    { id: 2, ts: at(16), downMbps: 795.0, upMbps: 43.1, pingMs: 18.0, jitterMs: 2.0 },
-    { id: 1, ts: at(25), downMbps: 810.3, upMbps: 44.8, pingMs: 17.5, jitterMs: 1.8 },
+    { id: 5, ts: at(0), downMbps: 418.2, upMbps: 41.5, pingMs: 19.2, jitterMs: 2.4, engine: e },
+    { id: 4, ts: at(2), downMbps: 802.1, upMbps: 44.0, pingMs: 17.8, jitterMs: 1.9, engine: e },
+    { id: 3, ts: at(9), downMbps: 780.5, upMbps: 42.2, pingMs: 18.5, jitterMs: 2.2, engine: e },
+    { id: 2, ts: at(16), downMbps: 795.0, upMbps: 43.1, pingMs: 18.0, jitterMs: 2.0, engine: e },
+    { id: 1, ts: at(25), downMbps: 810.3, upMbps: 44.8, pingMs: 17.5, jitterMs: 1.8, engine: e },
   ];
 }
 

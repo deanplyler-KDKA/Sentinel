@@ -205,6 +205,8 @@ export interface NetProbe {
   target: string;
 }
 
+export type SpeedEngine = 'cloudflare' | 'mlab';
+
 export interface SpeedTestRow {
   id: number;
   ts: string;
@@ -213,6 +215,8 @@ export interface SpeedTestRow {
   upMbps: number | null;
   pingMs: number | null;
   jitterMs: number | null;
+  /** Which service measured this; baselines are computed per engine. */
+  engine: SpeedEngine;
 }
 
 // ── Startup & diagnostics ───────────────────────────────

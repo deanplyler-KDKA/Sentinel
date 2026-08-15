@@ -14,6 +14,46 @@ describe('weights', () => {
   });
 });
 
+describe('not-applicable checks', () => {
+  it('does not penalize a machine with no VPN installed', () => {
+    // Isolate the VPN check: a machine without a VPN also has unencrypted DNS,
+    // which is a separate and legitimate finding, so compare the check itself
+    // rather than the totals.
+    const noVpn = healthy();
+    noVpn.vpn = { installed: false, serviceRunning: false, appRunning: false,
+      connected: false, adapter: null };
+    const r = computeScore(noVpn).results.find((x) => x.id === 'vpn-connected');
+    expect(r?.state).toBe('na');
+    expect(r?.earned).toBe(0);
+
+    // The proof it isn't a penalty: a machine identical except that the VPN
+    // check doesn't apply scores the same as one where it passes.
+    const vpnPasses = healthy(); // mock has an active VPN
+    const naMachine = healthy();
+    naMachine.vpn = { installed: false, serviceRunning: false, appRunning: false,
+      connected: false, adapter: null };
+    // Neutralise the DNS difference so only the VPN check varies.
+    naMachine.network!.dohServers = naMachine.network!.dns.flatMap((d) => d.servers);
+    expect(computeScore(naMachine).score).toBe(computeScore(vpnPasses).score);
+  });
+
+  it('still scores VPN-connected when a VPN is installed but off', () => {
+    const s = healthy();
+    s.vpn!.connected = false;
+    const r = computeScore(s).results.find((x) => x.id === 'vpn-connected');
+    expect(r?.state).toBe('fail');
+  });
+
+  it('keeps unmeasurable checks in the denominator so they cannot flatter the score', () => {
+    const s = healthy();
+    s.firewall = null; // unknown, not not-applicable
+    const report = computeScore(s);
+    const fw = report.results.filter((r) => r.group === 'Firewall');
+    expect(fw.every((r) => r.state === 'unknown')).toBe(true);
+    expect(report.score).toBeLessThan(computeScore(healthy()).score);
+  });
+});
+
 describe('computeScore', () => {
   it('scores the mock machine at 90 / Protected with nothing unknown', () => {
     const r = computeScore(healthy());

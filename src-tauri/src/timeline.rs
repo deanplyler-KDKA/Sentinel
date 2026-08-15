@@ -20,8 +20,9 @@ use crate::models::{SecuritySnapshot, TimelineEvent};
 
 /// Bump together with a migration branch in `ensure_schema` when the schema
 /// changes. v2 added the speedtests table; v3 made up_mbps nullable so a
-/// non-measured upload is NULL rather than a misleading 0.
-const SCHEMA_VERSION: i64 = 3;
+/// non-measured upload is NULL rather than a misleading 0; v4 records which
+/// measurement service produced each result.
+const SCHEMA_VERSION: i64 = 4;
 const MAX_EVENTS: i64 = 5000;
 const LIST_LIMIT: i64 = 300;
 
@@ -63,9 +64,10 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
                 down_mbps REAL NOT NULL,
                 up_mbps REAL,
                 ping_ms REAL,
-                jitter_ms REAL
+                jitter_ms REAL,
+                engine TEXT NOT NULL DEFAULT 'cloudflare'
             );
-            PRAGMA user_version = 3;",
+            PRAGMA user_version = 4;",
         )
         .map_err(|e| format!("create schema: {e}"))?;
     } else if version < SCHEMA_VERSION {
@@ -117,6 +119,22 @@ fn ensure_schema(conn: &Connection) -> Result<(), String> {
             )
             .map_err(|e| format!("migrate schema v2->v3: {e}"))?;
             appdata::log("timeline schema migrated v2 -> v3 (nullable up_mbps)");
+        }
+        // MUST stay after the v3 block: v3 rebuilds the table, which would
+        // drop a column added before it. Migrations run in ascending order.
+        if version < 4 {
+            // Results from different measurement services are not directly
+            // comparable, so every row records which produced it and baselines
+            // are computed per engine. Rows predating the choice were all
+            // Cloudflare, which the default backfills.
+            conn.execute_batch(
+                "BEGIN;
+                 ALTER TABLE speedtests ADD COLUMN engine TEXT NOT NULL DEFAULT 'cloudflare';
+                 PRAGMA user_version = 4;
+                 COMMIT;",
+            )
+            .map_err(|e| format!("migrate schema v3->v4: {e}"))?;
+            appdata::log("timeline schema migrated v3 -> v4 (speed test engine)");
         }
     } else if version > SCHEMA_VERSION {
         // A newer Sentinel wrote this database; read-compatible or not, do not
@@ -442,13 +460,14 @@ pub fn save_speedtest(
     up_mbps: Option<f64>,
     ping_ms: Option<f64>,
     jitter_ms: Option<f64>,
+    engine: &str,
 ) -> Result<i64, String> {
     let Some(db) = DB.get() else { return Err("timeline unavailable".into()) };
     let conn = db.lock().map_err(|_| "timeline lock poisoned".to_string())?;
     conn.execute(
-        "INSERT INTO speedtests(ts, down_mbps, up_mbps, ping_ms, jitter_ms)
-         VALUES(?1, ?2, ?3, ?4, ?5)",
-        params![ts, down_mbps, up_mbps, ping_ms, jitter_ms],
+        "INSERT INTO speedtests(ts, down_mbps, up_mbps, ping_ms, jitter_ms, engine)
+         VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+        params![ts, down_mbps, up_mbps, ping_ms, jitter_ms, engine],
     )
     .map_err(|e| format!("save speed test: {e}"))?;
     Ok(conn.last_insert_rowid())
@@ -476,7 +495,7 @@ pub fn list_speedtests() -> Result<Vec<crate::models::SpeedTestRow>, String> {
     let conn = db.lock().map_err(|_| "timeline lock poisoned".to_string())?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, ts, down_mbps, up_mbps, ping_ms, jitter_ms
+            "SELECT id, ts, down_mbps, up_mbps, ping_ms, jitter_ms, engine
              FROM speedtests ORDER BY id DESC LIMIT 200",
         )
         .map_err(|e| format!("prepare speedtests: {e}"))?;
@@ -489,6 +508,7 @@ pub fn list_speedtests() -> Result<Vec<crate::models::SpeedTestRow>, String> {
                 up_mbps: r.get(3)?,
                 ping_ms: r.get(4)?,
                 jitter_ms: r.get(5)?,
+                engine: r.get(6)?,
             })
         })
         .map_err(|e| format!("query speedtests: {e}"))?;
@@ -675,7 +695,14 @@ mod tests {
         ensure_schema(&conn).unwrap();
 
         let v: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(v, 3);
+        assert_eq!(v, SCHEMA_VERSION);
+
+        // v4 added the engine column, and pre-existing rows backfill to the
+        // service that actually produced them.
+        let engine: String = conn
+            .query_row("SELECT engine FROM speedtests WHERE ts = 'b'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(engine, "cloudflare");
 
         // The 0 sentinel became NULL; the real measurement survived intact.
         let sentinel: Option<f64> = conn

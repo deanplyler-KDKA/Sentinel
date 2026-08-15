@@ -5,13 +5,20 @@ import { DetailRow } from '../components/DetailRow';
 import { SuggestionList } from '../components/SuggestionList';
 import { assessDns } from '../lib/score';
 import { formatBps, relativeTime } from '../lib/format';
-import type { NetworkDetail, SpeedTestRow } from '../types/security';
+import type { NetworkDetail, SpeedEngine, SpeedTestRow } from '../types/security';
 
 function avg(rows: SpeedTestRow[], days: number): number | null {
   const cutoff = Date.now() - days * 86_400_000;
   const inWindow = rows.filter((r) => Date.parse(r.ts) >= cutoff);
   if (inWindow.length === 0) return null;
   return inWindow.reduce((s, r) => s + r.downMbps, 0) / inWindow.length;
+}
+
+const ENGINE_STORAGE_KEY = 'sentinel.speedEngine';
+
+function storedEngine(): SpeedEngine {
+  const v = localStorage.getItem(ENGINE_STORAGE_KEY);
+  return v === 'cloudflare' || v === 'mlab' ? v : 'mlab';
 }
 
 export function NetworkPage() {
@@ -21,16 +28,22 @@ export function NetworkPage() {
   const [detail, setDetail] = useState<NetworkDetail | null>(null);
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+  const [engine, setEngine] = useState<SpeedEngine>(storedEngine);
 
   useEffect(() => {
     getNetworkDetail().then(setDetail).catch(() => setDetail(null));
   }, []);
 
+  function chooseEngine(next: SpeedEngine) {
+    setEngine(next);
+    localStorage.setItem(ENGINE_STORAGE_KEY, next);
+  }
+
   async function onSpeedTest() {
     setTesting(true);
     setTestError(null);
     try {
-      await runSpeedTest();
+      await runSpeedTest(engine);
       refreshSpeedHistory();
     } catch (e) {
       setTestError(String(e));
@@ -41,11 +54,14 @@ export function NetworkPage() {
 
   const last = series[series.length - 1] ?? null;
   const dns = snapshot ? assessDns(snapshot) : null;
-  const latest = speedHistory[0] ?? null;
-  const previous = speedHistory[1] ?? null;
-  const avg7 = avg(speedHistory.slice(latest ? 1 : 0), 7);
-  const avg30 = avg(speedHistory.slice(latest ? 1 : 0), 30);
-  const best = speedHistory.length ? Math.max(...speedHistory.map((r) => r.downMbps)) : null;
+  // Baselines only ever compare like with like: a Cloudflare result and an
+  // M-Lab result measure differently, so mixing them would invent trends.
+  const sameEngine = speedHistory.filter((r) => r.engine === engine);
+  const latest = sameEngine[0] ?? null;
+  const previous = sameEngine[1] ?? null;
+  const avg7 = avg(sameEngine.slice(latest ? 1 : 0), 7);
+  const avg30 = avg(sameEngine.slice(latest ? 1 : 0), 30);
+  const best = sameEngine.length ? Math.max(...sameEngine.map((r) => r.downMbps)) : null;
 
   let comparison: { text: string; tone: 'good' | 'warn' | 'muted' } | null = null;
   if (latest && avg30 !== null && avg30 > 0) {
@@ -78,11 +94,29 @@ export function NetworkPage() {
           <button className="btn" onClick={refreshProbe} disabled={probeRunning}>
             {probeRunning ? 'Probing…' : 'Check connection quality'}
           </button>
+          <select
+            className="select"
+            value={engine}
+            onChange={(e) => chooseEngine(e.target.value as SpeedEngine)}
+            disabled={testing}
+            aria-label="Speed test service"
+          >
+            <option value="mlab">M-Lab (reliable)</option>
+            <option value="cloudflare">Cloudflare (private)</option>
+          </select>
           <button className="btn btn-primary" onClick={onSpeedTest} disabled={testing}>
             {testing ? 'Testing…' : 'Run speed test'}
           </button>
         </div>
       </header>
+
+      {/* The privacy trade-off is stated where the choice is made, not buried
+          in a document — M-Lab publishes results as open data. */}
+      <p className="small faint" style={{ marginBottom: 'var(--sp-3)' }}>
+        {engine === 'mlab'
+          ? 'M-Lab is an open measurement platform built for speed tests, so it stays reliable. Results — including your IP address — are published as public research data.'
+          : 'Cloudflare does not publish results, but limits how often you can test, which a shared VPN address can exhaust.'}
+      </p>
 
       {/* Backend messages are self-describing (rate limit, cooldown, network
           error), so no "failed:" prefix — a cooldown isn't a failure. */}

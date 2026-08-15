@@ -13,8 +13,9 @@ import type { SpeedTestRow } from '../../types/security';
 
 function speeds(latest: number, priors: number[]): SpeedTestRow[] {
   const now = Date.now();
+  const engine = 'mlab' as const;
   return [
-    { id: 100, ts: new Date(now).toISOString(), downMbps: latest, upMbps: 40, pingMs: 20, jitterMs: 2 },
+    { id: 100, ts: new Date(now).toISOString(), downMbps: latest, upMbps: 40, pingMs: 20, jitterMs: 2, engine },
     ...priors.map((d, i) => ({
       id: 99 - i,
       ts: new Date(now - (i + 1) * 86_400_000).toISOString(),
@@ -22,6 +23,7 @@ function speeds(latest: number, priors: number[]): SpeedTestRow[] {
       upMbps: 40,
       pingMs: 20,
       jitterMs: 2,
+      engine,
     })),
   ];
 }
