@@ -16,6 +16,10 @@ on:
 
 jobs:
   build:
+    # Building needs nothing but the source. Writing releases is the release
+    # job's business, and it is the only job that asks for more.
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -73,11 +77,30 @@ jobs:
             src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
 
-      - name: Draft release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  # One job, after both builds, collecting both installers into a single
+  # draft. Previously each build job created the release itself, which meant
+  # two jobs racing to create the same tag's release — whichever lost could
+  # duplicate or clobber it. Runs on Linux because it only moves files.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # The repository default for GITHUB_TOKEN is read-only, so creating a
+    # release needs this granted explicitly — on this job alone.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # Draft, never published automatically. Until the installers are code
+      # signed, a release going public on a tag push is a trap: Windows
+      # SmartScreen warns and macOS Gatekeeper refuses outright, so each one
+      # wants a written explanation before anyone is handed the link.
+      - uses: softprops/action-gh-release@v2
         with:
           draft: true
           files: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/dmg/*.dmg
+            artifacts/**/*-setup.exe
+            artifacts/**/*.dmg
