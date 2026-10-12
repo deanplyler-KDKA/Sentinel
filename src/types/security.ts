@@ -238,3 +238,13 @@ export interface CollectorStatus {
   runs: number;
   failures: number;
 }
+
+export interface AppSettings {
+  backgroundMonitoring: boolean;
+  startWithSystem: boolean;
+  notifications: boolean;
+  quietHours: boolean;
+  quietStartHour: number;
+  quietEndHour: number;
+  checkIntervalMins: number;
+}

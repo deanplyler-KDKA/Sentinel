@@ -1,5 +1,5 @@
 use crate::models::{CollectorError, SecuritySnapshot, SpeedTestRow, TimelineEvent};
-use crate::{actions, appdata, defender, diag, firewall, hardware, netinfo, netprobe, network,
+use crate::{actions, appdata, defender, diag, firewall, hardware, netinfo, netprobe, network, settings,
     nord, perf, speedtest, startup, timeline, windows};
 use serde::Serialize;
 
@@ -23,7 +23,7 @@ pub async fn get_security_snapshot() -> SecuritySnapshot {
         })
 }
 
-fn collect_snapshot() -> SecuritySnapshot {
+pub fn collect_snapshot() -> SecuritySnapshot {
     // Collectors are independent; run them in parallel so a snapshot takes
     // about as long as the slowest single PowerShell call.
     let (defender, firewall, system, network, vpn) = std::thread::scope(|s| {
@@ -225,4 +225,42 @@ mod tests {
         assert!(snap.network.is_some());
         assert!(snap.vpn.is_some());
     }
+}
+
+// ── Settings ─────────────────────────────────────────────────────────────
+
+/// Current user preferences. Zero arguments.
+#[tauri::command]
+pub fn get_settings() -> settings::Settings {
+    settings::get()
+}
+
+/// Saves preferences and applies the side effects that belong to the OS:
+/// registering or clearing the login item. Values are clamped in
+/// `settings::save` — the frontend cannot set a 0-minute polling loop.
+#[tauri::command]
+pub fn set_settings(
+    app: tauri::AppHandle,
+    value: settings::Settings,
+) -> Result<settings::Settings, String> {
+    let saved = settings::save(value)?;
+    apply_autostart(&app, saved.start_with_system)?;
+    Ok(saved)
+}
+
+/// Autostart is a real change to the user's machine, so it is only ever made
+/// in response to an explicit toggle, and failures surface rather than being
+/// silently swallowed.
+fn apply_autostart(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let currently = manager.is_enabled().unwrap_or(false);
+    if enabled && !currently {
+        manager.enable().map_err(|e| format!("couldn't add Sentinel to startup: {e}"))?;
+        appdata::log("autostart enabled");
+    } else if !enabled && currently {
+        manager.disable().map_err(|e| format!("couldn't remove Sentinel from startup: {e}"))?;
+        appdata::log("autostart disabled");
+    }
+    Ok(())
 }

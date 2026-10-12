@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import {
-  exportDiagnostics, exportReport, getAppInfo, getDiagnostics, resetAppData, type AppInfo,
+  exportDiagnostics, exportReport, getAppInfo, getDiagnostics, getSettings, resetAppData,
+  setSettings, type AppInfo,
 } from '../lib/api';
 import { relativeTime } from '../lib/format';
 import { buildReport } from '../lib/report';
 import { useStore } from '../lib/store';
 import { applyTheme, getTheme, type Theme } from '../lib/theme';
-import type { CollectorStatus } from '../types/security';
+import type { AppSettings, CollectorStatus } from '../types/security';
 
 export function SettingsPage() {
   const {
@@ -17,11 +18,28 @@ export function SettingsPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [theme, setTheme] = useState<Theme>(getTheme());
   const [diag, setDiag] = useState<CollectorStatus[]>([]);
+  const [cfg, setCfg] = useState<AppSettings | null>(null);
+  const [cfgError, setCfgError] = useState<string | null>(null);
 
   useEffect(() => {
     getAppInfo().then(setInfo).catch(() => {});
     getDiagnostics().then(setDiag).catch(() => {});
+    getSettings().then(setCfg).catch(() => {});
   }, []);
+
+  /** Optimistic, then corrected to whatever the backend clamped it to. */
+  async function updateCfg(patch: Partial<AppSettings>) {
+    if (!cfg) return;
+    const next = { ...cfg, ...patch };
+    setCfg(next);
+    setCfgError(null);
+    try {
+      setCfg(await setSettings(next));
+    } catch (e) {
+      setCfg(cfg); // roll back so a toggle never misreports what is in force
+      setCfgError(String(e));
+    }
+  }
 
   function onTheme(t: Theme) {
     setTheme(t);
@@ -77,6 +95,93 @@ export function SettingsPage() {
 
       <div className="grid-2">
         <div className="card">
+          <div className="settings-section">
+            <h3>Monitoring</h3>
+            <p>
+              Sentinel normally only runs while it is open. Turn these on and it keeps watching
+              in the background and tells you when something changes. All off by default.
+            </p>
+          </div>
+
+          {cfgError && <div className="error-banner">{cfgError}</div>}
+
+          {cfg && (
+            <div className="stack" style={{ marginBottom: "var(--sp-4)" }}>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={cfg.backgroundMonitoring}
+                  onChange={(e) => updateCfg({ backgroundMonitoring: e.target.checked })}
+                />
+                <span>
+                  <strong>Keep watching in the background</strong>
+                  <em>Closing the window leaves Sentinel in the tray instead of quitting.</em>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={cfg.notifications}
+                  onChange={(e) => updateCfg({ notifications: e.target.checked })}
+                />
+                <span>
+                  <strong>Notify me when something changes</strong>
+                  <em>Only genuine problems — protection switched off, a drive filling up or reporting a fault. Never good news, and never the same thing twice in a day.</em>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={cfg.startWithSystem}
+                  onChange={(e) => updateCfg({ startWithSystem: e.target.checked })}
+                />
+                <span>
+                  <strong>Start when I sign in</strong>
+                  <em>Adds Sentinel to your startup apps. Turning this off removes it again.</em>
+                </span>
+              </label>
+              <label className="toggle-row">
+                <input
+                  type="checkbox"
+                  checked={cfg.quietHours}
+                  onChange={(e) => updateCfg({ quietHours: e.target.checked })}
+                />
+                <span>
+                  <strong>Quiet hours</strong>
+                  <em>Hold notifications overnight and deliver them in the morning.</em>
+                </span>
+              </label>
+
+              {cfg.quietHours && (
+                <div className="row" style={{ paddingLeft: 28 }}>
+                  <span className="small faint">From</span>
+                  <select className="select" value={cfg.quietStartHour}
+                    onChange={(e) => updateCfg({ quietStartHour: Number(e.target.value) })}>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, 0 + "0").slice(-2)}:00</option>
+                    ))}
+                  </select>
+                  <span className="small faint">until</span>
+                  <select className="select" value={cfg.quietEndHour}
+                    onChange={(e) => updateCfg({ quietEndHour: Number(e.target.value) })}>
+                    {Array.from({ length: 24 }, (_, h) => (
+                      <option key={h} value={h}>{String(h).padStart(2, 0 + "0").slice(-2)}:00</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div className="row" style={{ paddingLeft: 28 }}>
+                <span className="small faint">Check every</span>
+                <select className="select" value={cfg.checkIntervalMins}
+                  onChange={(e) => updateCfg({ checkIntervalMins: Number(e.target.value) })}>
+                  {[5, 15, 30, 60, 120, 240].map((m) => (
+                    <option key={m} value={m}>{m < 60 ? m + " minutes" : (m / 60) + " hour" + (m > 60 ? "s" : "")}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
           <div className="settings-section">
             <h3>Appearance</h3>
             <select className="select" value={theme} onChange={(e) => onTheme(e.target.value as Theme)}>

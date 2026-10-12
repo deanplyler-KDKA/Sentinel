@@ -374,14 +374,29 @@ fn diff(prev: &TrackedState, cur: &TrackedState) -> Vec<NewEvent> {
 
 /// Records a snapshot: diffs against the stored state, inserts events, saves
 /// the new state, prunes. Failures are logged, never fatal to the snapshot.
-pub fn record(snap: &SecuritySnapshot) {
-    if let Err(e) = record_inner(snap) {
-        appdata::log(&format!("timeline record failed: {e}"));
+/// A change just written to the timeline. Returned so the background monitor
+/// can decide what deserves a notification without re-implementing the diff
+/// logic — there stays exactly one definition of "something changed".
+#[derive(Debug, Clone)]
+pub struct RecordedEvent {
+    pub kind: &'static str,
+    pub severity: &'static str,
+    pub message: String,
+    pub detail: Option<String>,
+}
+
+pub fn record(snap: &SecuritySnapshot) -> Vec<RecordedEvent> {
+    match record_inner(snap) {
+        Ok(events) => events,
+        Err(e) => {
+            appdata::log(&format!("timeline record failed: {e}"));
+            Vec::new()
+        }
     }
 }
 
-fn record_inner(snap: &SecuritySnapshot) -> Result<(), String> {
-    let Some(db) = DB.get() else { return Ok(()) };
+fn record_inner(snap: &SecuritySnapshot) -> Result<Vec<RecordedEvent>, String> {
+    let Some(db) = DB.get() else { return Ok(Vec::new()) };
     let conn = db.lock().map_err(|_| "timeline lock poisoned".to_string())?;
 
     let prev: Option<TrackedState> = conn
@@ -426,7 +441,16 @@ fn record_inner(snap: &SecuritySnapshot) -> Result<(), String> {
         params![MAX_EVENTS],
     )
     .map_err(|e| format!("prune events: {e}"))?;
-    Ok(())
+
+    Ok(events
+        .into_iter()
+        .map(|e| RecordedEvent {
+            kind: e.kind,
+            severity: e.severity,
+            message: e.message,
+            detail: e.detail,
+        })
+        .collect())
 }
 
 fn insert_events(conn: &Connection, events: &[NewEvent], after_gap: bool) -> Result<(), String> {

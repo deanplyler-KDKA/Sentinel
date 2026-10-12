@@ -71,12 +71,14 @@ mod diag;
 mod firewall;
 mod hardware;
 mod models;
+mod monitor;
 mod netinfo;
 mod ndt7;
 mod netprobe;
 mod network;
 mod nord;
 mod perf;
+mod settings;
 mod powershell;
 mod speedtest;
 mod startup;
@@ -86,6 +88,11 @@ mod windows;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
             // Non-fatal: Sentinel still monitors if its own data dir is
             // unavailable — logging and reset just won't work.
@@ -96,9 +103,11 @@ pub fn run() {
                 if let Err(e) = timeline::init(dir) {
                     appdata::log(&format!("timeline init failed: {e}"));
                 }
+                settings::init(dir);
             }
             fit_window_to_monitor(app.handle());
             perf::start_sampler();
+            monitor::start(app.handle().clone());
             if let Err(e) = setup_tray(app.handle()) {
                 appdata::log(&format!("tray setup failed: {e}"));
             }
@@ -120,8 +129,21 @@ pub fn run() {
             commands::get_speedtest_history,
             commands::get_startup_apps,
             commands::get_diagnostics,
-            commands::open_windows_setting
+            commands::open_windows_setting,
+            commands::get_settings,
+            commands::set_settings
         ])
+        .on_window_event(|window, event| {
+            // Closing the window only hides it when the user has asked for
+            // background monitoring. Otherwise close means close — an app that
+            // silently keeps running after you shut it is a dark pattern.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if settings::get().background_monitoring {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

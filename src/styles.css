@@ -802,3 +802,41 @@ button {
 
 .row { display: flex; align-items: center; gap: var(--sp-3); }
 .stack { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+/* ── Toggle rows (Settings → Monitoring) ───────────────── */
+
+.toggle-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  cursor: pointer;
+  padding: var(--sp-2) 0;
+}
+
+.toggle-row input[type='checkbox'] {
+  width: 17px;
+  height: 17px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  accent-color: var(--accent-2);
+  cursor: pointer;
+}
+
+.toggle-row span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.toggle-row strong {
+  font-size: var(--fs-m);
+  font-weight: 600;
+}
+
+.toggle-row em {
+  font-size: var(--fs-s);
+  color: var(--text-dim);
+  font-style: normal;
+  line-height: 1.5;
+}

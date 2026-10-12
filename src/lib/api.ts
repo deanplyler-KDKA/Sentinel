@@ -7,6 +7,7 @@ import type {
   PerfOverview,
   PerfPoint,
   SecuritySnapshot,
+  AppSettings,
   SpeedEngine,
   SpeedTestRow,
   StartupApp,
@@ -137,4 +138,20 @@ export async function openWindowsSetting(target: SettingsTarget): Promise<void> 
     throw new Error('Opening Windows settings only works in the installed app.');
   }
   return invoke<void>('open_windows_setting', { target });
+}
+
+const PREVIEW_SETTINGS: AppSettings = {
+  backgroundMonitoring: false, startWithSystem: false, notifications: false,
+  quietHours: true, quietStartHour: 22, quietEndHour: 7, checkIntervalMins: 15,
+};
+
+export async function getSettings(): Promise<AppSettings> {
+  if (!isTauri) return PREVIEW_SETTINGS;
+  return invoke<AppSettings>('get_settings');
+}
+
+/** Returns the saved settings as the backend clamped them. */
+export async function setSettings(value: AppSettings): Promise<AppSettings> {
+  if (!isTauri) return value;
+  return invoke<AppSettings>('set_settings', { value });
 }
