@@ -4,50 +4,11 @@
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use serde::{Deserialize, Serialize};
 
-use crate::powershell::run_json;
+use crate::models::HardwareInfo;
+use super::powershell::run_json;
 
 const CACHE_TTL: Duration = Duration::from_secs(600);
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GpuInfo {
-    pub name: String,
-    pub driver: String,
-    /// As reported by Win32_VideoController; can understate real VRAM on
-    /// some systems — presented as "reported" in the UI.
-    pub vram_mb: Option<i64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct BatteryInfo {
-    /// Win32_Battery BatteryStatus code (1 = discharging, 2 = on AC, ...).
-    pub status: i32,
-    pub charge_pct: Option<i32>,
-    /// Full-charge vs design capacity — often unsupported by firmware; None
-    /// renders as "Unavailable", never as a made-up 100%.
-    pub health_pct: Option<i32>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct PhysicalDiskInfo {
-    pub model: String,
-    pub media: String,
-    pub health: String,
-    pub bus: String,
-    pub size_gb: i64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HardwareInfo {
-    pub gpus: Vec<GpuInfo>,
-    pub battery: Option<BatteryInfo>,
-    pub physical_disks: Vec<PhysicalDiskInfo>,
-}
 
 // Read-only CIM/Storage queries. Battery health tries root\wmi capacity
 // classes and fails closed to null (verified unsupported on some firmware).

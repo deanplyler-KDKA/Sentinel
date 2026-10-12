@@ -177,3 +177,105 @@ pub struct VpnStatus {
     pub connected: bool,
     pub adapter: Option<String>,
 }
+
+// ── Cross-platform collector contracts ───────────────────────────────────
+// These shapes are the agreement between any platform backend and the UI.
+// A macOS collector fills the same structs a Windows one does; anything a
+// platform can't determine is None/empty and renders as "Unavailable".
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GpuInfo {
+    pub name: String,
+    pub driver: String,
+    /// Reported VRAM; can understate the real figure on some systems, so the
+    /// UI labels it as reported rather than authoritative.
+    pub vram_mb: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatteryInfo {
+    /// Platform status code (Windows Win32_Battery semantics; macOS maps onto
+    /// the same small set).
+    pub status: i32,
+    pub charge_pct: Option<i32>,
+    /// Full-charge vs design capacity. Often unsupported by PC firmware;
+    /// macOS usually does report it. None renders as "Unavailable", never as
+    /// a made-up 100%.
+    pub health_pct: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PhysicalDiskInfo {
+    pub model: String,
+    pub media: String,
+    pub health: String,
+    pub bus: String,
+    pub size_gb: i64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HardwareInfo {
+    pub gpus: Vec<GpuInfo>,
+    pub battery: Option<BatteryInfo>,
+    pub physical_disks: Vec<PhysicalDiskInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterInfo {
+    pub name: String,
+    pub description: String,
+    pub link_speed: String,
+    pub wifi: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IpConfigInfo {
+    pub interface: String,
+    pub gateway: String,
+    pub ipv4: Option<String>,
+    pub ipv6: bool,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkDetail {
+    pub adapters: Vec<AdapterInfo>,
+    pub configs: Vec<IpConfigInfo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartupApp {
+    pub name: String,
+    pub command: String,
+    pub location: String,
+    pub publisher: Option<String>,
+    /// Whether it is set to run at sign-in. Read-only: Sentinel never changes
+    /// this on any platform.
+    pub enabled: bool,
+}
+
+/// The complete set of places Sentinel may send the user. Each platform maps
+/// these to its own settings URLs; the frontend picks from this fixed menu and
+/// can never supply a destination of its own.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SettingsTarget {
+    WindowsUpdate,
+    WindowsSecurity,
+    VirusProtection,
+    RansomwareProtection,
+    FirewallProtection,
+    DeviceEncryption,
+    Storage,
+    StartupApps,
+    NetworkStatus,
+    WifiSettings,
+    PowerAndBattery,
+}

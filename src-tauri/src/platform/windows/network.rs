@@ -1,5 +1,5 @@
 use crate::models::NetworkStatus;
-use crate::powershell::run_json;
+use super::powershell::run_json;
 
 // Read-only: active connection profiles, per-interface IPv4 DNS servers, and
 // which servers have DoH actually enabled (Dnscache registry — the

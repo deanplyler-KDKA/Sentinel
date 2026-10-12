@@ -1,5 +1,5 @@
 use crate::models::{BitLockerState, RawSystemStatus, SystemStatus};
-use crate::powershell::run_json;
+use super::powershell::run_json;
 
 // Read-only sources, all usable without elevation:
 // - Secure Boot: HKLM SecureBoot\State registry value (Confirm-SecureBootUEFI needs admin)

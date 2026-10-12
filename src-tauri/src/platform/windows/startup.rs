@@ -2,20 +2,9 @@
 //! disables anything; it explains what starts with Windows and lets the user
 //! act in Windows' own settings.
 
-use serde::{Deserialize, Serialize};
 
-use crate::powershell::run_json;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StartupApp {
-    pub name: String,
-    pub command: String,
-    pub location: String,
-    pub publisher: Option<String>,
-    /// From Explorer's StartupApproved flags; missing entry = enabled.
-    pub enabled: bool,
-}
+use crate::models::StartupApp;
+use super::powershell::run_json;
 
 // Read-only: Win32_StartupCommand + StartupApproved byte flags (first byte
 // even = enabled). Publisher comes from the executable's version metadata

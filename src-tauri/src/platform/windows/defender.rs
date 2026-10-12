@@ -1,5 +1,5 @@
 use crate::models::DefenderStatus;
-use crate::powershell::run_json;
+use super::powershell::run_json;
 
 // Read-only: Get-MpComputerStatus / Get-MpPreference query Defender state, and
 // SecurityCenter2 names any third-party AV (so Defender passive mode isn't

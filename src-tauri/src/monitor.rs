@@ -15,7 +15,8 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
 
-use crate::{appdata, commands, hardware, perf, settings, timeline};
+use crate::platform::hardware;
+use crate::{appdata, commands, perf, settings, timeline};
 
 /// Don't repeat the same kind of alert inside this window, even if the
 /// underlying state flaps.

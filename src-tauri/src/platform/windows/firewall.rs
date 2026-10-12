@@ -1,5 +1,5 @@
 use crate::models::FirewallStatus;
-use crate::powershell::run_json;
+use super::powershell::run_json;
 
 // Read-only: Get-NetFirewallProfile reports per-profile enablement.
 // The PSModulePath pin must stay the first statement — see powershell.rs.

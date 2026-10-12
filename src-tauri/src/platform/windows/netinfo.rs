@@ -2,34 +2,9 @@
 //! gateway, addresses. Link speed is the LOCAL link, deliberately kept
 //! separate from internet speed in the UI.
 
-use serde::{Deserialize, Serialize};
 
-use crate::powershell::run_json;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AdapterInfo {
-    pub name: String,
-    pub description: String,
-    pub link_speed: String,
-    pub wifi: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IpConfigInfo {
-    pub interface: String,
-    pub gateway: String,
-    pub ipv4: Option<String>,
-    pub ipv6: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct NetworkDetail {
-    pub adapters: Vec<AdapterInfo>,
-    pub configs: Vec<IpConfigInfo>,
-}
+use crate::models::NetworkDetail;
+use super::powershell::run_json;
 
 // Read-only. The PSModulePath pin must stay the first statement.
 const SCRIPT: &str = r#"

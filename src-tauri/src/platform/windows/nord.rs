@@ -1,5 +1,5 @@
 use crate::models::VpnStatus;
-use crate::powershell::run_json;
+use super::powershell::run_json;
 
 // Read-only: detects the NordVPN install, service, app process, and whether a
 // tunnel adapter (NordLynx, or TAP for OpenVPN) is up. Never touches Nord config.

@@ -1,6 +1,8 @@
-use crate::models::{CollectorError, SecuritySnapshot, SpeedTestRow, TimelineEvent};
-use crate::{actions, appdata, defender, diag, firewall, hardware, netinfo, netprobe, network, settings,
-    nord, perf, speedtest, startup, timeline, windows};
+use crate::models::{CollectorError, HardwareInfo, NetworkDetail, SecuritySnapshot, SettingsTarget,
+    SpeedTestRow, StartupApp, TimelineEvent};
+use crate::platform::{actions, defender, firewall, hardware, netinfo, network, nord, startup,
+    system};
+use crate::{appdata, diag, netprobe, perf, settings, speedtest, timeline};
 use serde::Serialize;
 
 /// The only IPC command in Phase 1. Zero arguments by design — the frontend
@@ -29,7 +31,7 @@ pub fn collect_snapshot() -> SecuritySnapshot {
     let (defender, firewall, system, network, vpn) = std::thread::scope(|s| {
         let d = s.spawn(|| diag::track("security/defender", defender::collect));
         let f = s.spawn(|| diag::track("security/firewall", firewall::collect));
-        let sys = s.spawn(|| diag::track("security/system", windows::collect));
+        let sys = s.spawn(|| diag::track("security/system", system::collect));
         let n = s.spawn(|| diag::track("security/network", network::collect));
         let v = s.spawn(|| diag::track("security/vpn", nord::collect));
         (
@@ -103,14 +105,14 @@ pub fn get_perf_series() -> Vec<perf::PerfPoint> {
 }
 
 #[tauri::command]
-pub async fn get_hardware_info() -> Result<hardware::HardwareInfo, String> {
+pub async fn get_hardware_info() -> Result<HardwareInfo, String> {
     tauri::async_runtime::spawn_blocking(|| diag::track("hardware", hardware::collect))
         .await
         .map_err(|e| format!("task failed: {e}"))?
 }
 
 #[tauri::command]
-pub async fn get_network_detail() -> Result<netinfo::NetworkDetail, String> {
+pub async fn get_network_detail() -> Result<NetworkDetail, String> {
     tauri::async_runtime::spawn_blocking(|| diag::track("network/detail", netinfo::collect))
         .await
         .map_err(|e| format!("task failed: {e}"))?
@@ -144,7 +146,7 @@ pub fn get_speedtest_history() -> Result<Vec<SpeedTestRow>, String> {
 }
 
 #[tauri::command]
-pub async fn get_startup_apps() -> Result<Vec<startup::StartupApp>, String> {
+pub async fn get_startup_apps() -> Result<Vec<StartupApp>, String> {
     tauri::async_runtime::spawn_blocking(|| diag::track("startup-apps", startup::collect))
         .await
         .map_err(|e| format!("task failed: {e}"))?
@@ -164,7 +166,7 @@ pub fn get_diagnostics() -> Vec<diag::CollectorStatus> {
 /// menu rather than supplying a target. Sentinel still changes nothing — it
 /// only navigates the user to Windows' own UI.
 #[tauri::command]
-pub fn open_windows_setting(target: actions::SettingsTarget) -> Result<(), String> {
+pub fn open_windows_setting(target: SettingsTarget) -> Result<(), String> {
     actions::open(target)
 }
 

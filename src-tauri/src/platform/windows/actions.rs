@@ -9,28 +9,10 @@
 //! explorer.exe is invoked by absolute path (same reasoning as
 //! powershell.rs::system_powershell — never resolve a launcher by name).
 
+use crate::models::SettingsTarget;
 use std::path::PathBuf;
 use std::process::Command;
 
-use serde::Deserialize;
-
-/// The complete set of places Sentinel is allowed to send the user. Adding a
-/// variant is a deliberate, reviewable change; the frontend cannot extend it.
-#[derive(Debug, Clone, Copy, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum SettingsTarget {
-    WindowsUpdate,
-    WindowsSecurity,
-    VirusProtection,
-    RansomwareProtection,
-    FirewallProtection,
-    DeviceEncryption,
-    Storage,
-    StartupApps,
-    NetworkStatus,
-    WifiSettings,
-    PowerAndBattery,
-}
 
 impl SettingsTarget {
     /// Fixed URI per variant. `windowsdefender:` and `ms-settings:` are the

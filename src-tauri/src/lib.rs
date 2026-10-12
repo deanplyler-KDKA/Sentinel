@@ -65,25 +65,16 @@ fn fit_window_to_monitor(app: &tauri::AppHandle) {
     let _ = win.set_size(tauri::LogicalSize::new(w, h));
     let _ = win.center();
 }
-mod actions;
-mod defender;
 mod diag;
-mod firewall;
-mod hardware;
 mod models;
+mod platform;
 mod monitor;
-mod netinfo;
 mod ndt7;
 mod netprobe;
-mod network;
-mod nord;
 mod perf;
 mod settings;
-mod powershell;
 mod speedtest;
-mod startup;
 mod timeline;
-mod windows;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
