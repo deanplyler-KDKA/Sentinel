@@ -117,8 +117,7 @@ mod tests {
 
     #[test]
     fn interval_is_clamped_to_something_sane() {
-        let mut s = Settings::default();
-        s.check_interval_mins = 0;
+        let mut s = Settings { check_interval_mins: 0, ..Default::default() };
         assert_eq!(s.clone().sanitized().check_interval_mins, 5);
         s.check_interval_mins = 10_000;
         assert_eq!(s.sanitized().check_interval_mins, 240);

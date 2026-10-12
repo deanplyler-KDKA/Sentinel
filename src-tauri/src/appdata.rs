@@ -74,12 +74,37 @@ fn log_path(dir: &Path) -> PathBuf {
 }
 
 /// Errors if the path is a symlink or junction (any reparse point).
+///
+/// Both platforms must be equally strict. This is the check that stops
+/// Sentinel from being pointed at someone else's directory through a
+/// redirected app-data path, so a platform that cannot detect redirection
+/// must fail rather than shrug. Only the detection differs.
+#[cfg(target_os = "windows")]
 fn refuse_reparse_point(path: &Path) -> Result<(), String> {
     use std::os::windows::fs::MetadataExt;
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+    // The attribute, deliberately, and not `is_symlink()`: Windows reports a
+    // directory junction as an ordinary directory, so `is_symlink()` misses
+    // exactly the redirection this function exists to catch.
     match fs::symlink_metadata(path) {
         Ok(m) if (m.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT) != 0 => Err(format!(
             "{} is a symlink/junction; refusing to use it as app data",
+            path.display()
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Unix has no junctions, so a symlink is the whole of the redirection a
+/// reparse point represents and `is_symlink()` is the complete check.
+///
+/// `not(windows)` rather than `unix` so every target gets exactly one
+/// definition of this function and none can quietly get zero.
+#[cfg(not(target_os = "windows"))]
+fn refuse_reparse_point(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(m) if m.file_type().is_symlink() => Err(format!(
+            "{} is a symlink; refusing to use it as app data",
             path.display()
         )),
         _ => Ok(()),
@@ -219,6 +244,24 @@ fn write_report_to(dir: &Path, content: &str) -> Result<String, String> {
     Err("couldn't find an unused report filename".into())
 }
 
+/// Deletes Sentinel's own stored data (logs, data-version marker, timeline
+/// events) and recreates a fresh layout. Does not touch the WebView cache
+/// while running — that is removed by uninstalling or deleting the app-data
+/// folder manually. The timeline database file itself stays open; its
+/// contents are cleared via the timeline module.
+pub fn reset(app: &tauri::AppHandle) -> Result<String, String> {
+    let _ = app; // reserved for future per-window cache clearing
+    let dir = DATA_DIR.get().ok_or("app data not initialized")?;
+    let logs = dir.join("logs");
+    fs::remove_dir_all(&logs).map_err(|e| format!("remove logs: {e}"))?;
+    let _ = fs::remove_file(version_file(dir));
+    fs::create_dir_all(&logs).map_err(|e| format!("recreate logs: {e}"))?;
+    let _ = fs::write(version_file(dir), DATA_VERSION.to_string());
+    crate::timeline::clear();
+    log("application data was reset");
+    Ok(dir.display().to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,22 +284,4 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
     }
-}
-
-/// Deletes Sentinel's own stored data (logs, data-version marker, timeline
-/// events) and recreates a fresh layout. Does not touch the WebView cache
-/// while running — that is removed by uninstalling or deleting the app-data
-/// folder manually. The timeline database file itself stays open; its
-/// contents are cleared via the timeline module.
-pub fn reset(app: &tauri::AppHandle) -> Result<String, String> {
-    let _ = app; // reserved for future per-window cache clearing
-    let dir = DATA_DIR.get().ok_or("app data not initialized")?;
-    let logs = dir.join("logs");
-    fs::remove_dir_all(&logs).map_err(|e| format!("remove logs: {e}"))?;
-    let _ = fs::remove_file(version_file(dir));
-    fs::create_dir_all(&logs).map_err(|e| format!("recreate logs: {e}"))?;
-    let _ = fs::write(version_file(dir), DATA_VERSION.to_string());
-    crate::timeline::clear();
-    log("application data was reset");
-    Ok(dir.display().to_string())
 }
