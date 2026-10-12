@@ -214,12 +214,44 @@ pub fn reset_app_data(app: tauri::AppHandle) -> Result<String, String> {
 mod tests {
     use super::*;
 
-    /// End-to-end smoke test: runs the real collectors on this machine and
-    /// requires every section to parse. Run with `cargo test -- --nocapture`.
+    /// End-to-end smoke test: runs the real collectors on this machine.
+    /// Run with `cargo test -- --nocapture` to print the snapshot.
+    ///
+    /// The invariant here holds on every platform, including one whose
+    /// collectors are still stubs: a section may be absent only if an error
+    /// says why. A silently missing section renders as "unknown", and an
+    /// unexplained unknown in a security tool is indistinguishable from
+    /// "fine" — which is the one thing Sentinel must never imply.
     #[test]
-    fn snapshot_collects_every_section() {
+    fn absent_sections_are_always_explained() {
         let snap = collect_snapshot();
         println!("{}", serde_json::to_string_pretty(&snap).unwrap());
+        let explained = |source: &str| snap.errors.iter().any(|e| e.source == source);
+        for (name, present) in [
+            ("defender", snap.defender.is_some()),
+            ("firewall", snap.firewall.is_some()),
+            ("system", snap.system.is_some()),
+            ("network", snap.network.is_some()),
+            ("vpn", snap.vpn.is_some()),
+        ] {
+            assert!(
+                present || explained(name),
+                "{name} is missing from the snapshot and no error explains why"
+            );
+        }
+    }
+
+    /// Windows is the platform Sentinel actually ships collectors for, so
+    /// there every section must genuinely collect. This is the assertion that
+    /// catches a Windows collector regressing — the cross-platform test above
+    /// deliberately cannot, since it accepts a reported failure as valid.
+    ///
+    /// Delete the cfg when platform/macos stops being stubs; until then a
+    /// macOS run of this would only ever restate that the stubs are stubs.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_collects_every_section() {
+        let snap = collect_snapshot();
         assert!(snap.errors.is_empty(), "collector errors: {:?}", snap.errors);
         assert!(snap.defender.is_some());
         assert!(snap.firewall.is_some());
