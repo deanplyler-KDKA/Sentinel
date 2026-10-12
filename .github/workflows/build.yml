@@ -22,10 +22,16 @@ jobs:
         include:
           - os: windows-latest
             label: windows
+            # tauri.conf.json pins targets to ["nsis"], which is correct for a
+            # local Windows build but means a macOS run bundles nothing at
+            # all. Each platform names its own bundle here instead, and the
+            # flag overrides the config.
+            bundles: nsis
           - os: macos-latest
             # Apple Silicon. Add x86_64-apple-darwin here if an Intel Mac
             # ever needs to run this.
             label: macos
+            bundles: dmg
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -53,15 +59,19 @@ jobs:
         run: cargo test
 
       - name: Build
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
 
+      # `error`, not `ignore`. With `ignore` the macOS job compiled, bundled
+      # nothing, found no .dmg and still reported success — a green tick for
+      # an installer that did not exist. A platform that builds no artifact
+      # has failed, so say so here.
       - uses: actions/upload-artifact@v4
         with:
           name: sentinel-${{ matrix.label }}
           path: |
             src-tauri/target/release/bundle/nsis/*-setup.exe
             src-tauri/target/release/bundle/dmg/*.dmg
-          if-no-files-found: ignore
+          if-no-files-found: error
 
       - name: Draft release
         if: startsWith(github.ref, 'refs/tags/v')
