@@ -1,0 +1,73 @@
+# Builds Sentinel for Windows and macOS.
+#
+# This exists because Tauri cannot cross-compile a macOS app from Windows —
+# Apple's toolchain only runs on macOS. GitHub's macOS runners are a Mac we
+# borrow for ten minutes per release instead of buying one.
+#
+# Triggered manually, or by pushing a version tag (v0.6.0). Artifacts are
+# attached to the run; tagged builds also create a draft release.
+
+name: build
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows
+          - os: macos-latest
+            # Apple Silicon. Add x86_64-apple-darwin here if an Intel Mac
+            # ever needs to run this.
+            label: macos
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Run the suite on both platforms. The scoring, suggestions and report
+      # logic is shared, so a macOS regression would show up here first.
+      - run: npm test
+      - run: npx tsc --noEmit
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build
+        run: npm run tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sentinel-${{ matrix.label }}
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: ignore
+
+      - name: Draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
